@@ -1,0 +1,203 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+// ENUMS
+
+
+enum ZapStatus {
+  ENABLED
+  DISABLED
+}
+
+enum TriggerType {
+  WEBHOOK
+  POLLING
+}
+
+enum StepType {
+  ACTION
+  AI
+  FILTER
+  BRANCH
+  DELAY
+  TRANSFORM
+}
+
+enum RunStatus {
+  QUEUED
+  RUNNING
+  SUCCESS
+  FAILED
+  FILTERED
+}
+
+enum StepExecutionStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+  SKIPPED
+  RETRYING
+}
+
+// CONNECTION
+
+
+model Connection {
+  id            String   @id @default(cuid())
+  provider      String
+
+  accessToken   String
+  refreshToken  String?
+
+  createdAt     DateTime @default(now())
+
+  triggers      Trigger[]
+  steps         Step[]
+}
+
+
+// ZAP
+
+
+model Zap {
+  id          String   @id @default(cuid())
+
+  zapName     String
+  status      ZapStatus @default(ENABLED)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  trigger     Trigger?
+  steps       Step[]
+  runs        ZapRun[]
+}
+
+
+// TRIGGER
+
+
+model Trigger {
+  id                  String      @id @default(cuid())
+
+  zapId               String      @unique
+  zap                 Zap         @relation(fields: [zapId], references: [id], onDelete: Cascade)
+
+  connectionId        String?
+  connection          Connection? @relation(fields: [connectionId], references: [id])
+
+  type                TriggerType
+
+  config              Json
+
+  webhookToken        String?     @unique
+
+  pollIntervalSec     Int?
+
+  createdAt           DateTime    @default(now())
+}
+
+
+// STEP
+
+
+model Step {
+  id                  String      @id @default(cuid())
+
+  zapId               String
+  zap                 Zap         @relation(fields: [zapId], references: [id], onDelete: Cascade)
+
+  connectionId        String?
+  connection          Connection? @relation(fields: [connectionId], references: [id])
+
+  parentStepId        String?
+  parentStep          Step?       @relation("StepHierarchy", fields: [parentStepId], references: [id])
+
+  children            Step[]      @relation("StepHierarchy")
+
+  type                StepType
+
+  name                String
+
+  config              Json
+
+  order               Int
+
+  branchCondition     Json?
+
+  executions          StepExecution[]
+
+  @@index([zapId])
+  @@index([parentStepId])
+}
+
+
+// ZAP RUN
+
+
+model ZapRun {
+  id                  String      @id @default(cuid())
+
+  zapId               String
+  zap                 Zap         @relation(fields: [zapId], references: [id], onDelete: Cascade)
+
+  status              RunStatus   @default(QUEUED)
+
+  idempotencyKey      String      @unique
+
+  triggerPayload      Json
+
+  startedAt           DateTime?
+
+  completedAt         DateTime?
+
+  createdAt           DateTime    @default(now())
+
+  stepExecutions      StepExecution[]
+
+  @@index([zapId])
+}
+
+
+// STEP EXECUTION
+
+
+model StepExecution {
+  id                  String      @id @default(cuid())
+
+  zapRunId            String
+  zapRun              ZapRun      @relation(fields: [zapRunId], references: [id], onDelete: Cascade)
+
+  stepId              String
+  step                Step        @relation(fields: [stepId], references: [id], onDelete: Cascade)
+
+  status              StepExecutionStatus @default(PENDING)
+
+  input               Json?
+
+  output              Json?
+
+  error               String?
+
+  attempt             Int         @default(1)
+
+  createdAt           DateTime    @default(now())
+
+  updatedAt           DateTime    @updatedAt
+
+  @@index([zapRunId])
+  @@index([stepId])
+}
