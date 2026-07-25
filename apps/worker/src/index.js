@@ -7,6 +7,13 @@ const connection = new IORedis("redis://localhost:6379", {
   maxRetriesPerRequest: null,
 });
 
+const MAX_ATTEMPTS = 3;
+const BASE_BACKOFF_MS = 500;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function executeActionStep(step) {
   const { url, method = "POST", body = {} } = step.config;
   const res = await fetch(url, {
@@ -16,6 +23,32 @@ async function executeActionStep(step) {
   });
   const output = await res.json().catch(() => ({}));
   return { status: res.status, output };
+}
+
+// Retry wrapper: fail hone par max 3 baar try karta hai, har baar
+// wait time double karke (exponential backoff: 500ms, 1000ms, 2000ms).
+async function executeWithRetry(step, stepExecutionId) {
+  let lastError;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return await executeActionStep(step);
+    } catch (err) {
+      lastError = err;
+      console.log(`[worker] step ${step.id} attempt ${attempt} failed: ${err.message}`);
+
+      await prisma.stepExecution.update({
+        where: { id: stepExecutionId },
+        data: { attempt, status: "RETRYING", error: err.message },
+      });
+
+      if (attempt < MAX_ATTEMPTS) {
+        await sleep(BASE_BACKOFF_MS * 2 ** (attempt - 1));
+      }
+    }
+  }
+
+  throw lastError; // saare attempts fail ho gaye
 }
 
 const worker = new Worker(
@@ -32,27 +65,22 @@ const worker = new Worker(
 
     await prisma.zapRun.update({
       where: { id: zapRunId },
-      data: { status: "RUNNING"},
+      data: { status: "RUNNING" },
     });
 
     for (const step of steps) {
       const stepExecution = await prisma.stepExecution.create({
-        data: {
-          zapRunId,
-          stepId: step.id,
-          status: "RUNNING",
-          
-        },
+        data: { zapRunId, stepId: step.id, status: "RUNNING" },
       });
 
       try {
-        const result = await executeActionStep(step);
+        const result = await executeWithRetry(step, stepExecution.id);
         await prisma.stepExecution.update({
           where: { id: stepExecution.id },
           data: { status: "SUCCESS", output: result.output },
         });
       } catch (err) {
-        console.error(`[worker] step ${step.id} failed:`, err.message);
+        console.error(`[worker] step ${step.id} permanently failed:`, err.message);
         await prisma.stepExecution.update({
           where: { id: stepExecution.id },
           data: { status: "FAILED", error: err.message },
@@ -75,6 +103,5 @@ const worker = new Worker(
 );
 
 worker.on("error", (err) => console.error("[worker] connection error:", err));
-worker.on("failed", (job, err) => console.error(`[worker] job ${job?.id} failed:`, err.message));
 
 console.log("Worker started, listening for jobs...");
