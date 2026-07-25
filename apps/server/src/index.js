@@ -1,3 +1,4 @@
+require("dotenv").config();
 const express = require("express");
 
 const app = express();
@@ -8,6 +9,12 @@ app.get("/health", (req, res) => res.json({ status: "ok" }));
 
 app.get("/", (req, res) => {
   res.send("Hello World!");
+});
+
+
+app.post("/test-echo", (req, res) => {
+  console.log("Test echo received:", req.body);
+  res.json({ received: req.body, timestamp: new Date().toISOString() });
 });
 
 

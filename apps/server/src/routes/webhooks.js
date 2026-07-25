@@ -1,10 +1,5 @@
 const express = require("express");
 const router = express.Router();
-const { zapExecutionQueue } = require("../queue");
-const prisma = require("../prismaClient");
-
-const express = require("express");
-const router = express.Router();
 const prisma = require("../prismaClient");
 const { zapExecutionQueue } = require("../queue");
 
@@ -18,14 +13,15 @@ router.post("/:token", async (req, res) => {
     return res.status(404).json({ error: "Webhook not found" });
   }
 
-  if (trigger.zap.status !== "enabled") {
+  if (trigger.zap.status !== "ENABLED") {
     return res.status(200).json({ accepted: false, reason: "zap_disabled" });
   }
 
   const run = await prisma.zapRun.create({
     data: {
       zapId: trigger.zapId,
-      status: "queued",
+      status: "QUEUED",
+      idempotencyKey: `${trigger.id}-${Date.now()}`,
       triggerPayload: req.body,
     },
   });
