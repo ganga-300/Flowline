@@ -2,6 +2,7 @@ require("dotenv").config();
 const { Worker } = require("bullmq");
 const IORedis = require("ioredis");
 const prisma = require("./prismaClient");
+const { evaluateCondition } = require("./conditions");
 
 const connection = new IORedis("redis://localhost:6379", {
   maxRetriesPerRequest: null,
@@ -25,8 +26,9 @@ async function executeActionStep(step) {
   return { status: res.status, output };
 }
 
-// Retry wrapper: fail hone par max 3 baar try karta hai, har baar
-// wait time double karke (exponential backoff: 500ms, 1000ms, 2000ms).
+// Retry wrapper - only used for ACTION steps (the ones that call something
+// external and can genuinely fail transiently). Filter/branch are pure
+// logic, nothing to retry.
 async function executeWithRetry(step, stepExecutionId) {
   let lastError;
 
@@ -48,7 +50,118 @@ async function executeWithRetry(step, stepExecutionId) {
     }
   }
 
-  throw lastError; // saare attempts fail ho gaye
+  throw lastError;
+}
+
+// Recursively marks a whole unselected branch subtree as SKIPPED - not
+// FAILED. This is the distinction from FR-05: a branch not taken is
+// expected behavior, not an error.
+async function markSkipped(step, allSteps, zapRunId) {
+  await prisma.stepExecution.create({
+    data: { zapRunId, stepId: step.id, status: "SKIPPED" },
+  });
+  const children = allSteps.filter((s) => s.parentStepId === step.id);
+  for (const child of children) {
+    await markSkipped(child, allSteps, zapRunId);
+  }
+}
+
+// Executes an ordered list of sibling steps against the shared context.
+// Returns { filtered: true } if a filter stopped the run, or { done: true }
+// when the whole list completed normally.
+async function executeStepList(steps, allSteps, context, zapRunId) {
+  for (const step of steps) {
+    if (step.type === "FILTER") {
+      const passed = evaluateCondition(context, step.config.condition);
+      await prisma.stepExecution.create({
+        data: {
+          zapRunId,
+          stepId: step.id,
+          status: "SUCCESS",
+          output: { passed },
+        },
+      });
+      if (!passed) {
+        console.log(`[worker] filter step ${step.id} did not pass - stopping run cleanly`);
+        return { filtered: true };
+      }
+      continue;
+    }
+
+    if (step.type === "BRANCH") {
+      const children = allSteps
+        .filter((s) => s.parentStepId === step.id)
+        .sort((a, b) => a.order - b.order);
+
+      // First child whose condition matches wins. A child with no
+      // branchCondition acts as the "else"/default path.
+      const conditionalChildren = children.filter((c) => c.branchCondition);
+      const defaultChild = children.find((c) => !c.branchCondition);
+      let selected = null;
+      for (const child of conditionalChildren) {
+        if (evaluateCondition(context, child.branchCondition)) {
+          selected = child;
+          break;
+        }
+      }
+      if (!selected) selected = defaultChild;
+
+      for (const child of children) {
+        if (!selected || child.id !== selected.id) {
+          await markSkipped(child, allSteps, zapRunId);
+        }
+      }
+
+      await prisma.stepExecution.create({
+        data: {
+          zapRunId,
+          stepId: step.id,
+          status: "SUCCESS",
+          output: { selectedStepId: selected ? selected.id : null },
+        },
+      });
+
+      if (!selected) return { done: true }; // no branch matched, nothing further to run
+
+      // Continue into the selected child (and its own children, if any)
+      const result = await executeStepList([selected], allSteps, context, zapRunId);
+      if (result.filtered) return result;
+      continue;
+    }
+
+    // ACTION step (AI/transform would slot in here later the same way)
+    const stepExecution = await prisma.stepExecution.create({
+      data: { zapRunId, stepId: step.id, status: "RUNNING" },
+    });
+
+    try {
+      const result = await executeWithRetry(step, stepExecution.id);
+      await prisma.stepExecution.update({
+        where: { id: stepExecution.id },
+        data: { status: "SUCCESS", output: result.output },
+      });
+      context.steps[step.id] = { output: result.output };
+    } catch (err) {
+      console.error(`[worker] step ${step.id} permanently failed:`, err.message);
+      await prisma.stepExecution.update({
+        where: { id: stepExecution.id },
+        data: { status: "FAILED", error: err.message },
+      });
+      throw err; // bubble up - the whole run fails
+    }
+
+    // A step can itself have children (e.g. steps nested under a branch
+    // child) - continue into them after this step completes.
+    const nextChildren = allSteps
+      .filter((s) => s.parentStepId === step.id)
+      .sort((a, b) => a.order - b.order);
+    if (nextChildren.length) {
+      const result = await executeStepList(nextChildren, allSteps, context, zapRunId);
+      if (result.filtered) return result;
+    }
+  }
+
+  return { done: true };
 }
 
 const worker = new Worker(
@@ -58,46 +171,34 @@ const worker = new Worker(
     const { zapRunId } = job.data;
 
     const run = await prisma.zapRun.findUnique({ where: { id: zapRunId } });
-    const steps = await prisma.step.findMany({
-      where: { zapId: run.zapId, parentStepId: null },
-      orderBy: { order: "asc" },
-    });
+    const allSteps = await prisma.step.findMany({ where: { zapId: run.zapId } });
+    const topLevel = allSteps
+      .filter((s) => !s.parentStepId)
+      .sort((a, b) => a.order - b.order);
+
+    const context = { trigger: run.triggerPayload || {}, steps: {} };
 
     await prisma.zapRun.update({
       where: { id: zapRunId },
       data: { status: "RUNNING" },
     });
 
-    for (const step of steps) {
-      const stepExecution = await prisma.stepExecution.create({
-        data: { zapRunId, stepId: step.id, status: "RUNNING" },
+    try {
+      const result = await executeStepList(topLevel, allSteps, context, zapRunId);
+
+      const finalStatus = result.filtered ? "FILTERED" : "SUCCESS";
+      await prisma.zapRun.update({
+        where: { id: zapRunId },
+        data: { status: finalStatus },
       });
-
-      try {
-        const result = await executeWithRetry(step, stepExecution.id);
-        await prisma.stepExecution.update({
-          where: { id: stepExecution.id },
-          data: { status: "SUCCESS", output: result.output },
-        });
-      } catch (err) {
-        console.error(`[worker] step ${step.id} permanently failed:`, err.message);
-        await prisma.stepExecution.update({
-          where: { id: stepExecution.id },
-          data: { status: "FAILED", error: err.message },
-        });
-        await prisma.zapRun.update({
-          where: { id: zapRunId },
-          data: { status: "FAILED" },
-        });
-        return;
-      }
+      console.log(`[worker] job ${job.id} completed with status ${finalStatus}`);
+    } catch (err) {
+      await prisma.zapRun.update({
+        where: { id: zapRunId },
+        data: { status: "FAILED" },
+      });
+      console.error(`[worker] job ${job.id} failed:`, err.message);
     }
-
-    await prisma.zapRun.update({
-      where: { id: zapRunId },
-      data: { status: "SUCCESS" },
-    });
-    console.log(`[worker] job ${job.id} completed`);
   },
   { connection }
 );
