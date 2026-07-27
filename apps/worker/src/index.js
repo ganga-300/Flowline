@@ -1,5 +1,5 @@
 require("dotenv").config();
-const { Worker } = require("bullmq");
+const { Worker ,Queue } = require("bullmq");
 const IORedis = require("ioredis");
 const prisma = require("./prismaClient");
 const { evaluateCondition } = require("./conditions");
@@ -7,6 +7,9 @@ const { evaluateCondition } = require("./conditions");
 const connection = new IORedis("redis://localhost:6379", {
   maxRetriesPerRequest: null,
 });
+
+
+const zapExecutionQueue = new Queue("zap-execution", { connection });
 
 const MAX_ATTEMPTS = 3;
 const BASE_BACKOFF_MS = 500;
@@ -69,8 +72,27 @@ async function markSkipped(step, allSteps, zapRunId) {
 // Executes an ordered list of sibling steps against the shared context.
 // Returns { filtered: true } if a filter stopped the run, or { done: true }
 // when the whole list completed normally.
-async function executeStepList(steps, allSteps, context, zapRunId) {
+async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterStepId) {
+  let resuming = !!resumeAfterStepId; // true agar resume ho raha hai, warna false
   for (const step of steps) {
+    if (resuming) {
+      if (step.id === resumeAfterStepId) {
+        resuming = false; // yehi wo delay step tha - isse aage se normal chalna shuru karo
+      }
+      continue; // is step ko skip karo (already ho chuka hai pehle)
+    }
+    if (step.type === "DELAY") {
+      const seconds = step.config.seconds || 60;
+      await prisma.stepExecution.create({
+        data: {
+          zapRunId,
+          stepId: step.id,
+          status: "SUCCESS",
+          output: { delayedSeconds: seconds },
+        },
+      });
+      return { paused: { resumeAfterStepId: step.id, delayMs: seconds * 1000 } };
+}
     if (step.type === "FILTER") {
       const passed = evaluateCondition(context, step.config.condition);
       await prisma.stepExecution.create({
@@ -168,7 +190,7 @@ const worker = new Worker(
   "zap-execution",
   async (job) => {
     console.log(`[worker] picked up job ${job.id}`, job.data);
-    const { zapRunId } = job.data;
+    const { zapRunId , resumeAfterStepId } = job.data;
 
     const run = await prisma.zapRun.findUnique({ where: { id: zapRunId } });
     const allSteps = await prisma.step.findMany({ where: { zapId: run.zapId } });
@@ -178,13 +200,31 @@ const worker = new Worker(
 
     const context = { trigger: run.triggerPayload || {}, steps: {} };
 
+    if (resumeAfterStepId) {
+      const priorExecutions = await prisma.stepExecution.findMany({
+        where: { zapRunId, status: "SUCCESS" },
+      });
+      for (const pe of priorExecutions) {
+        context.steps[pe.stepId] = { output: pe.output };
+      }
+    }
+
     await prisma.zapRun.update({
       where: { id: zapRunId },
       data: { status: "RUNNING" },
     });
 
     try {
-      const result = await executeStepList(topLevel, allSteps, context, zapRunId);
+      const result = await executeStepList(topLevel, allSteps, context, zapRunId,resumeAfterStepId);
+
+      if (result.paused) {
+        await zapExecutionQueue.add(
+          "resume-zap-run",
+          { zapRunId, resumeAfterStepId: result.paused.resumeAfterStepId },
+          { delay: result.paused.delayMs }
+        );
+        return; // run stays RUNNING in the database until the resume completes
+      }
 
       const finalStatus = result.filtered ? "FILTERED" : "SUCCESS";
       await prisma.zapRun.update({
