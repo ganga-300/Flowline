@@ -3,7 +3,9 @@ const { Worker ,Queue } = require("bullmq");
 const IORedis = require("ioredis");
 const prisma = require("./prismaClient");
 const { evaluateCondition } = require("./conditions");
+const TokenBucket = require("./rateLimiter");
 
+const slackBucket = new TokenBucket(5, 1); // 5 tokens capacity, 1 token/second refill
 const connection = new IORedis("redis://localhost:6379", {
   maxRetriesPerRequest: null,
 });
@@ -19,6 +21,8 @@ function sleep(ms) {
 }
 
 async function executeActionStep(step) {
+  await slackBucket.consume(); // yahan wait hoga agar bucket khaali hai
+
   const { url, method = "POST", body = {} } = step.config;
   const res = await fetch(url, {
     method,
