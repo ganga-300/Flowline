@@ -32,4 +32,14 @@ function evaluateCondition(context, condition) {
   }
 }
 
-module.exports = { resolvePath, evaluateCondition };
+
+// Resolves "{{path}}" placeholders inside a string against the context.
+// e.g. "Summarize: {{trigger.message}}" -> "Summarize: customer is angry..."
+function resolveTemplate(context, template) {
+  return template.replace(/\{\{(.+?)\}\}/g, (_, path) => {
+    const value = resolvePath(context, path.trim());
+    return value === undefined ? "" : String(value);
+  });
+}
+
+module.exports = { resolvePath, evaluateCondition , resolveTemplate };

@@ -2,7 +2,7 @@ require("dotenv").config();
 const { Worker ,Queue } = require("bullmq");
 const IORedis = require("ioredis");
 const prisma = require("./prismaClient");
-const { evaluateCondition } = require("./conditions");
+const { evaluateCondition,resolveTemplate } = require("./conditions");
 const TokenBucket = require("./rateLimiter");
 
 const slackBucket = new TokenBucket(5, 1); // 5 tokens capacity, 1 token/second refill
@@ -33,14 +33,44 @@ async function executeActionStep(step) {
   return { status: res.status, output };
 }
 
+async function executeAiStep(step) {
+  const { model = "meta-llama/llama-3.1-8b-instruct:free", promptTemplate } = step.config;
+
+  const prompt = resolveTemplate(step._context, promptTemplate);
+
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`AI step failed: ${res.status} ${errText}`);
+  }
+
+  const data = await res.json();
+  const content = data.choices?.[0]?.message?.content ?? "";
+  return { output: { content } };
+}
+
 // Retry wrapper - only used for ACTION steps (the ones that call something
 // external and can genuinely fail transiently). Filter/branch are pure
 // logic, nothing to retry.
-async function executeWithRetry(step, stepExecutionId) {
+async function executeWithRetry(step, stepExecutionId,context) {
   let lastError;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
+      if (step.type === "AI") {
+        return await executeAiStep({ ...step, _context: context });
+      }
       return await executeActionStep(step);
     } catch (err) {
       lastError = err;
@@ -161,7 +191,7 @@ async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterS
     });
 
     try {
-      const result = await executeWithRetry(step, stepExecution.id);
+      const result = await executeWithRetry(step, stepExecution.id,context);
       await prisma.stepExecution.update({
         where: { id: stepExecution.id },
         data: { status: "SUCCESS", output: result.output },
