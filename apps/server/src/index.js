@@ -1,10 +1,11 @@
 require("dotenv").config();
 const express = require("express");
+const cors = require("cors");
 const zapsRouter = require("./routes/zaps");
 const authRouter = require("./routes/auth");
 
-
 const app = express();
+app.use(cors());
 app.use("/auth", authRouter);
 
 app.use(express.json());

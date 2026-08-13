@@ -12,7 +12,7 @@ router.get("/github", (req, res) => {
   res.redirect(`https://github.com/login/oauth/authorize?${params}`);
 });
 
-// Step 2: GitHub yahan wapas bhejता hai, ?code=... ke saath
+// Step 2: GitHub yahan wapas bhejta hai, ?code=... ke saath
 router.get("/github/callback", async (req, res) => {
   const { code } = req.query;
 
@@ -43,6 +43,13 @@ router.get("/github/callback", async (req, res) => {
   });
 
   res.json({ connected: true, connectionId: connection.id, provider: "github" });
+});
+
+router.get("/connections", async (req, res) => {
+  const connections = await prisma.connection.findMany({
+    select: { id: true, provider: true, createdAt: true },
+  });
+  res.json({ connections });
 });
 
 module.exports = router;
