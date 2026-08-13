@@ -3,13 +3,19 @@ const express = require("express");
 const cors = require("cors");
 const zapsRouter = require("./routes/zaps");
 const authRouter = require("./routes/auth");
+const webhooksRouter = require("./routes/webhooks");
 
 const app = express();
-app.use(cors());
-app.use("/auth", authRouter);
 
+app.use(cors());
 app.use(express.json());
+
+
+
+app.use("/auth", authRouter);
+app.use("/webhooks", webhooksRouter);
 app.use("/zaps", zapsRouter);
+
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 
 app.get("/", (req, res) => {
@@ -23,9 +29,7 @@ app.post("/test-echo", (req, res) => {
 });
 
 
-const webhooksRouter = require("./routes/webhooks");
-app.use(express.json());
-app.use("/webhooks", webhooksRouter);
+
 
 app.listen(4000,()=>{
     console.log("Server is running on port 4000");

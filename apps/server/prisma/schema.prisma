@@ -85,6 +85,8 @@ model Zap {
   trigger     Trigger?
   steps       Step[]
   runs        ZapRun[]
+  userId String
+  user   User @relation(fields: [userId], references: [id])
 }
 
 
@@ -201,4 +203,12 @@ model StepExecution {
 
   @@index([zapRunId])
   @@index([stepId])
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  zaps      Zap[]
 }

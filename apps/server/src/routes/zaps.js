@@ -2,10 +2,12 @@ const express = require("express");
 const crypto = require("crypto");
 const router = express.Router();
 const prisma = require("../prismaClient");
+const requireAuth = require("../middleware/auth");
 
 // GET /zaps - list all Zaps, newest first
-router.get("/", async (req, res) => {
+router.get("/",requireAuth, async (req, res) => {
   const zaps = await prisma.zap.findMany({
+    where: { userId: req.userId },
     orderBy: { createdAt: "desc" },
     include: { trigger: true },
   });
@@ -14,7 +16,7 @@ router.get("/", async (req, res) => {
 });
 
 // GET /zaps/:id - one Zap with trigger and step tree
-router.get("/:id", async (req, res) => {
+router.get("/:id",requireAuth, async (req, res) => {
   const zap = await prisma.zap.findUnique({
     where: { id: req.params.id },
     include: {
@@ -33,7 +35,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // POST /zaps - create a Zap with Trigger and Steps
-router.post("/", async (req, res) => {
+router.post("/",requireAuth, async (req, res) => {
   const { name, trigger, steps, status } = req.body;
 
   if (!name || !trigger || !trigger.type) {
@@ -49,6 +51,7 @@ router.post("/", async (req, res) => {
     data: {
       zapName: name,
       status: status || "ENABLED",
+      userId: req.userId,
       trigger: {
         create: {
           type: trigger.type,
@@ -82,7 +85,7 @@ router.post("/", async (req, res) => {
 });
 
 // PATCH /zaps/:id - update name and/or status
-router.patch("/:id", async (req, res) => {
+router.patch("/:id",requireAuth, async (req, res) => {
   const { name, status } = req.body;
 
   if (status && !["ENABLED", "DISABLED"].includes(status)) {
@@ -115,7 +118,7 @@ router.patch("/:id", async (req, res) => {
 });
 
 // GET /zaps/:id/runs?status=FAILED - execution history list
-router.get("/:id/runs", async (req, res) => {
+router.get("/:id/runs",requireAuth, async (req, res) => {
   try {
     const { status } = req.query;
 
@@ -136,7 +139,7 @@ router.get("/:id/runs", async (req, res) => {
 });
 
 // GET /zaps/:id/runs/:runId - one run's full step-by-step trace
-router.get("/:id/runs/:runId", async (req, res) => {
+router.get("/:id/runs/:runId",requireAuth, async (req, res) => {
   try {
     const run = await prisma.zapRun.findUnique({
       where: { id: req.params.runId },
