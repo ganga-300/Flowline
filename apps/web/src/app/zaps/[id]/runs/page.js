@@ -2,6 +2,8 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
+import { authFetch } from "@/lib/api";
+import { useAuthProtection } from "@/lib/useAuthProtection";
 
 // ── Icons ────────────────────────────────────────────────────────────
 function ZapIcon({ className = "w-5 h-5" }) {
@@ -220,6 +222,7 @@ function JsonBlock({ title, data }) {
 export default function ZapRunsPage({ params }) {
   const resolvedParams = use(params);
   const zapId = resolvedParams.id;
+  const { isAuthenticated } = useAuthProtection();
 
   const [zap, setZap] = useState(null);
   const [runs, setRuns] = useState([]);
@@ -236,7 +239,7 @@ export default function ZapRunsPage({ params }) {
   useEffect(() => {
     async function fetchZap() {
       try {
-        const res = await fetch(`http://localhost:4000/zaps/${zapId}`);
+        const res = await authFetch(`http://localhost:4000/zaps/${zapId}`);
         if (res.ok) {
           const data = await res.json();
           setZap(data.zap);
@@ -262,7 +265,7 @@ export default function ZapRunsPage({ params }) {
           ? `http://localhost:4000/zaps/${zapId}/runs?status=${status}`
           : `http://localhost:4000/zaps/${zapId}/runs`;
 
-      const res = await fetch(url);
+      const res = await authFetch(url);
       const text = await res.text();
       let data = {};
       try {
@@ -301,7 +304,7 @@ export default function ZapRunsPage({ params }) {
     if (!runDetails[runId]) {
       setLoadingDetails((prev) => ({ ...prev, [runId]: true }));
       try {
-        const res = await fetch(`http://localhost:4000/zaps/${zapId}/runs/${runId}`);
+        const res = await authFetch(`http://localhost:4000/zaps/${zapId}/runs/${runId}`);
         if (res.ok) {
           const data = await res.json().catch(() => ({}));
           setRunDetails((prev) => ({ ...prev, [runId]: data.run }));
@@ -313,6 +316,14 @@ export default function ZapRunsPage({ params }) {
       }
     }
   };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-[#0d1117] flex items-center justify-center font-mono text-xs text-slate-400">
+        Redirecting to login...
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0d1117] text-[#e6edf3] font-sans flex flex-col selection:bg-[#c4f542]/30">

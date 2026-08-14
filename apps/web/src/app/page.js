@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 
 /* ─── Scroll-Reveal Hook ─── */
 function useReveal() {
@@ -494,9 +495,12 @@ export default function Home() {
                 POSTGRES
               </span>
             </div>
-            <button className="px-4 py-1.5 border border-[var(--color-foreground)] rounded font-mono text-xs tracking-wider text-[var(--color-foreground)] hover:bg-[var(--color-foreground)] hover:text-[var(--color-background)] transition-all duration-200">
+            <Link
+              href="/signup"
+              className="px-4 py-1.5 border border-[var(--color-foreground)] rounded font-mono text-xs tracking-wider text-[var(--color-foreground)] hover:bg-[var(--color-foreground)] hover:text-[var(--color-background)] transition-all duration-200"
+            >
               GET STARTED
-            </button>
+            </Link>
           </div>
         </div>
       </nav>
@@ -533,9 +537,12 @@ export default function Home() {
 
                 {/* CTA buttons */}
                 <div className="flex items-center gap-5 mb-10">
-                  <button className="px-6 py-2.5 bg-[var(--color-accent)] text-black font-mono text-xs tracking-wider font-semibold rounded hover:bg-[#d4ff52] hover:shadow-[0_0_30px_rgba(196,245,66,0.3)] transition-all duration-300">
+                  <Link
+                    href="/signup"
+                    className="px-6 py-2.5 bg-[var(--color-accent)] text-black font-mono text-xs tracking-wider font-semibold rounded hover:bg-[#d4ff52] hover:shadow-[0_0_30px_rgba(196,245,66,0.3)] transition-all duration-300 inline-block text-center"
+                  >
                     GET STARTED
-                  </button>
+                  </Link>
                   <a
                     href="#engine"
                     className="font-mono text-xs tracking-wider text-[var(--color-foreground)] underline underline-offset-4 decoration-[var(--color-border)] hover:decoration-[var(--color-accent)] transition-all duration-200 flex items-center gap-1"
@@ -858,9 +865,12 @@ export default function Home() {
             Node.js engine you can inspect from trigger to trace.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-10">
-            <button className="px-8 py-3 bg-[var(--color-accent)] text-black font-mono text-xs tracking-wider font-semibold rounded hover:bg-[#d4ff52] hover:shadow-[0_0_30px_rgba(196,245,66,0.3)] transition-all duration-300">
+            <Link
+              href="/signup"
+              className="px-8 py-3 bg-[var(--color-accent)] text-black font-mono text-xs tracking-wider font-semibold rounded hover:bg-[#d4ff52] hover:shadow-[0_0_30px_rgba(196,245,66,0.3)] transition-all duration-300 inline-block text-center"
+            >
               GET STARTED
-            </button>
+            </Link>
             <button className="px-8 py-3 border border-[var(--color-border)] text-[var(--color-foreground)] font-mono text-xs tracking-wider rounded hover:border-[var(--color-foreground)] transition-all duration-200">
               SEE HOW IT WORKS
             </button>

@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { authFetch } from "@/lib/api";
+import { useAuthProtection } from "@/lib/useAuthProtection";
 
 // ── Icons ────────────────────────────────────────────────────────────
 function ZapIcon({ className = "w-5 h-5" }) {
@@ -115,6 +117,7 @@ function getStepIcon(type) {
 
 export default function NewZapBuilderPage() {
   const router = useRouter();
+  const { isAuthenticated } = useAuthProtection();
 
   // ── Zap State ──
   const [zapName, setZapName] = useState("Untitled Zap");
@@ -330,9 +333,8 @@ export default function NewZapBuilderPage() {
         }),
       };
 
-      const res = await fetch("http://localhost:4000/zaps", {
+      const res = await authFetch("http://localhost:4000/zaps", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
@@ -349,6 +351,14 @@ export default function NewZapBuilderPage() {
       setIsPublishing(false);
     }
   };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-[#0d1117] flex items-center justify-center font-mono text-xs text-slate-400">
+        Redirecting to login...
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0d1117] text-[#e6edf3] font-sans flex flex-col relative overflow-x-hidden selection:bg-[#c4f542]/30">
