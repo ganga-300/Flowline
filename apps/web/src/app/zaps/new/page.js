@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { authFetch } from "@/lib/api";
 import { useAuthProtection } from "@/lib/useAuthProtection";
+import { getIntegration, getIntegrationAction } from "@/integrations";
+import { ActionIntegrationSelector } from "@/integrations/ActionIntegrationSelector";
 
 // ── Icons ────────────────────────────────────────────────────────────
 function ZapIcon({ className = "w-5 h-5" }) {
@@ -259,6 +261,11 @@ export default function NewZapBuilderPage() {
     if (!step.isConfigured) return "Click to configure parameters";
     switch (step.type) {
       case "ACTION":
+        if (step.config?.provider) {
+          const provider = getIntegration(step.config.provider);
+          const action = getIntegrationAction(step.config.provider, step.config.action);
+          return `${provider?.name || step.config.provider} → ${action?.name || step.config.action}`;
+        }
         return `${step.config.method || "GET"} ${step.config.url || "URL missing"}`;
       case "AI":
         return step.config.prompt
@@ -293,19 +300,27 @@ export default function NewZapBuilderPage() {
         steps: steps.map((s, idx) => {
           let stepConfig = {};
           if (s.type === "ACTION") {
-            let parsedBody = s.config.body;
-            if (typeof s.config.body === "string" && s.config.body.trim().startsWith("{")) {
-              try {
-                parsedBody = JSON.parse(s.config.body);
-              } catch {
-                parsedBody = s.config.body;
+            if (s.config?.provider) {
+              stepConfig = {
+                provider: s.config.provider,
+                action: s.config.action || "",
+                ...s.config,
+              };
+            } else {
+              let parsedBody = s.config.body;
+              if (typeof s.config.body === "string" && s.config.body.trim().startsWith("{")) {
+                try {
+                  parsedBody = JSON.parse(s.config.body);
+                } catch {
+                  parsedBody = s.config.body;
+                }
               }
+              stepConfig = {
+                url: s.config.url || "",
+                method: s.config.method || "POST",
+                body: parsedBody || {},
+              };
             }
-            stepConfig = {
-              url: s.config.url || "",
-              method: s.config.method || "POST",
-              body: parsedBody || {},
-            };
           } else if (s.type === "AI") {
             stepConfig = {
               prompt: s.config.prompt || "",
@@ -328,6 +343,7 @@ export default function NewZapBuilderPage() {
             type: s.type,
             name: s.name || `${s.type} Step`,
             order: idx,
+            ...(s.config?.connectionId && { connectionId: s.config.connectionId }),
             config: stepConfig,
           };
         }),
@@ -737,63 +753,77 @@ export default function NewZapBuilderPage() {
                         />
                       </div>
 
-                      <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                          HTTP Method
-                        </label>
-                        <select
-                          value={panelDraft.config?.method || "POST"}
-                          onChange={(e) =>
-                            setPanelDraft({
-                              ...panelDraft,
-                              config: { ...panelDraft.config, method: e.target.value },
-                            })
-                          }
-                          className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white font-mono focus:border-[#c4f542] outline-none"
-                        >
-                          <option value="GET">GET</option>
-                          <option value="POST">POST</option>
-                          <option value="PUT">PUT</option>
-                          <option value="DELETE">DELETE</option>
-                          <option value="PATCH">PATCH</option>
-                        </select>
-                      </div>
+                      <ActionIntegrationSelector
+                        config={panelDraft.config}
+                        onChange={(newConfig) =>
+                          setPanelDraft({
+                            ...panelDraft,
+                            config: newConfig,
+                          })
+                        }
+                      />
 
-                      <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                          Request URL
-                        </label>
-                        <input
-                          type="url"
-                          placeholder="https://api.example.com/webhook"
-                          value={panelDraft.config?.url || ""}
-                          onChange={(e) =>
-                            setPanelDraft({
-                              ...panelDraft,
-                              config: { ...panelDraft.config, url: e.target.value },
-                            })
-                          }
-                          className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white font-mono placeholder:text-slate-600 focus:border-[#c4f542] outline-none"
-                        />
-                      </div>
+                      {(!panelDraft.config?.provider || panelDraft.config?.provider === "custom_http") && (
+                        <>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                              HTTP Method
+                            </label>
+                            <select
+                              value={panelDraft.config?.method || "POST"}
+                              onChange={(e) =>
+                                setPanelDraft({
+                                  ...panelDraft,
+                                  config: { ...panelDraft.config, method: e.target.value },
+                                })
+                              }
+                              className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white font-mono focus:border-[#c4f542] outline-none"
+                            >
+                              <option value="GET">GET</option>
+                              <option value="POST">POST</option>
+                              <option value="PUT">PUT</option>
+                              <option value="DELETE">DELETE</option>
+                              <option value="PATCH">PATCH</option>
+                            </select>
+                          </div>
 
-                      <div>
-                        <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                          Body (JSON string)
-                        </label>
-                        <textarea
-                          rows={6}
-                          placeholder={'{\n  "event": "{{trigger.event}}"\n}'}
-                          value={panelDraft.config?.body || ""}
-                          onChange={(e) =>
-                            setPanelDraft({
-                              ...panelDraft,
-                              config: { ...panelDraft.config, body: e.target.value },
-                            })
-                          }
-                          className="w-full bg-[#0d1117] border border-slate-700 rounded-lg p-3 text-xs text-white font-mono placeholder:text-slate-600 focus:border-[#c4f542] outline-none"
-                        />
-                      </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                              Request URL
+                            </label>
+                            <input
+                              type="url"
+                              placeholder="https://api.example.com/webhook"
+                              value={panelDraft.config?.url || ""}
+                              onChange={(e) =>
+                                setPanelDraft({
+                                  ...panelDraft,
+                                  config: { ...panelDraft.config, url: e.target.value },
+                                })
+                              }
+                              className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white font-mono placeholder:text-slate-600 focus:border-[#c4f542] outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                              Body (JSON string)
+                            </label>
+                            <textarea
+                              rows={6}
+                              placeholder={'{\n  "event": "{{trigger.event}}"\n}'}
+                              value={panelDraft.config?.body || ""}
+                              onChange={(e) =>
+                                setPanelDraft({
+                                  ...panelDraft,
+                                  config: { ...panelDraft.config, body: e.target.value },
+                                })
+                              }
+                              className="w-full bg-[#0d1117] border border-slate-700 rounded-lg p-3 text-xs text-white font-mono placeholder:text-slate-600 focus:border-[#c4f542] outline-none"
+                            />
+                          </div>
+                        </>
+                      )}
                     </>
                   )}
 

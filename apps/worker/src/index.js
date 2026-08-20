@@ -2,8 +2,9 @@ require("dotenv").config();
 const { Worker ,Queue } = require("bullmq");
 const IORedis = require("ioredis");
 const prisma = require("./prismaClient");
-const { evaluateCondition,resolveTemplate } = require("./conditions");
+const { evaluateCondition, resolveTemplate } = require("./conditions");
 const TokenBucket = require("./rateLimiter");
+const { getIntegrationHandler } = require("./integrations/registry");
 
 const slackBucket = new TokenBucket(5, 1); // 5 tokens capacity, 1 token/second refill
 const connection = new IORedis("redis://localhost:6379", {
@@ -20,10 +21,22 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function executeActionStep(step) {
-  await slackBucket.consume(); // yahan wait hoga agar bucket khaali hai
+async function executeActionStep(step, context) {
+  const provider = step.config?.provider;
+  const action = step.config?.action;
 
-  const { url, method = "POST", body = {} } = step.config;
+  if (provider && action) {
+    const handler = getIntegrationHandler(provider, action);
+    if (!handler) {
+      throw new Error(`No worker integration handler registered for ${provider}:${action}`);
+    }
+    return await handler(step, context);
+  }
+
+  // Preserved fallback for custom HTTP request steps
+  await slackBucket.consume();
+
+  const { url, method = "POST", body = {} } = step.config || {};
   const res = await fetch(url, {
     method,
     headers: { "Content-Type": "application/json" },
@@ -60,10 +73,8 @@ async function executeAiStep(step) {
   return { output: { content } };
 }
 
-// Retry wrapper - only used for ACTION steps (the ones that call something
-// external and can genuinely fail transiently). Filter/branch are pure
-// logic, nothing to retry.
-async function executeWithRetry(step, stepExecutionId,context) {
+// Retry wrapper - used for ACTION / AI steps that call external services
+async function executeWithRetry(step, stepExecutionId, context) {
   let lastError;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -71,7 +82,7 @@ async function executeWithRetry(step, stepExecutionId,context) {
       if (step.type === "AI") {
         return await executeAiStep({ ...step, _context: context });
       }
-      return await executeActionStep(step);
+      return await executeActionStep(step, context);
     } catch (err) {
       lastError = err;
       console.log(`[worker] step ${step.id} attempt ${attempt} failed: ${err.message}`);

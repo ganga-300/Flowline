@@ -496,6 +496,12 @@ export default function Home() {
               </span>
             </div>
             <Link
+              href="/login"
+              className="font-mono text-xs tracking-wider text-[var(--color-muted)] hover:text-[var(--color-foreground)] transition-colors duration-200"
+            >
+              LOG IN
+            </Link>
+            <Link
               href="/signup"
               className="px-4 py-1.5 border border-[var(--color-foreground)] rounded font-mono text-xs tracking-wider text-[var(--color-foreground)] hover:bg-[var(--color-foreground)] hover:text-[var(--color-background)] transition-all duration-200"
             >
