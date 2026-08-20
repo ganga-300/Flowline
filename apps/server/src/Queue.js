@@ -1,7 +1,7 @@
 const { Queue } = require("bullmq");
 const IORedis = require("ioredis");
 
-const connection = new IORedis("redis://localhost:6379", {
+const connection = new IORedis("redis://localhost:6380", {
   maxRetriesPerRequest: null,
 });
 

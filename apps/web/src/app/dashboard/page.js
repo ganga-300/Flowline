@@ -204,7 +204,7 @@ export default function DashboardPage() {
                     {zap.zapName || zap.name || "Untitled Zap"}
                   </h3>
                   <p className="text-xs font-mono text-slate-400 mb-4 line-clamp-2">
-                    ID: {zap.id} • {zap.steps?.length || 0} step(s)
+                    ID: {zap.id}
                   </p>
                 </div>
 
