@@ -7,7 +7,7 @@ function formatLabel(path) {
   const key = parts[parts.length - 1];
   return key
     .replace(/_/g, " ")
-    .replace(/([a-[#c4f542]a-z])/g, " $1")
+    .replace(/([A-Z])/g, " $1")
     .replace(/^./, (str) => str.toUpperCase())
     .trim();
 }
