@@ -99,6 +99,11 @@ router.post("/", requireAuth, async (req, res) => {
       const content = data.choices?.[0]?.message?.content ?? "";
       return res.json({ status: "SUCCESS", output: { content }, error: null });
 
+    } else if (step.type === "FORMATTER") {
+      const { executeFormatterStep } = require("../../../worker/src/formatter");
+      const result = executeFormatterStep(step, context);
+      return res.json({ status: "SUCCESS", output: result.output, error: null });
+
     } else if (step.type === "FILTER") {
       const { evaluateCondition } = require("../../../worker/src/conditions");
       const passed = evaluateCondition(context, step.config?.condition || {});

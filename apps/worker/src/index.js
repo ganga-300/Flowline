@@ -3,6 +3,7 @@ const { Worker ,Queue } = require("bullmq");
 const IORedis = require("ioredis");
 const prisma = require("./prismaClient");
 const { evaluateCondition, resolveTemplate } = require("./conditions");
+const { executeFormatterStep } = require("./formatter");
 const TokenBucket = require("./rateLimiter");
 const { getIntegrationHandler } = require("./integrations/registry");
 
@@ -81,6 +82,9 @@ async function executeWithRetry(step, stepExecutionId, context) {
     try {
       if (step.type === "AI") {
         return await executeAiStep({ ...step, _context: context });
+      }
+      if (step.type === "FORMATTER") {
+        return executeFormatterStep(step, context);
       }
       return await executeActionStep(step, context);
     } catch (err) {
