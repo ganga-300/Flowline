@@ -7,7 +7,7 @@ const TokenBucket = require("./rateLimiter");
 const { getIntegrationHandler } = require("./integrations/registry");
 
 const slackBucket = new TokenBucket(5, 1); // 5 tokens capacity, 1 token/second refill
-const connection = new IORedis("redis://localhost:6379", {
+const connection = new IORedis("redis://localhost:6380", {
   maxRetriesPerRequest: null,
 });
 

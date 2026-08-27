@@ -22,15 +22,18 @@ function base64urlEncode(str) {
  * @param {string} params.body
  * @returns {string} RFC 2822 MIME message
  */
-function buildMimeMessage({ to, subject, body }) {
+function buildMimeMessage({ to, subject, body, from }) {
   const messageParts = [
     `To: ${to}`,
     `Subject: ${subject}`,
     "Content-Type: text/html; charset=utf-8",
     "MIME-Version: 1.0",
-    "",
-    body,
   ];
+  if (from) {
+    messageParts.push(`From: ${from}`);
+  }
+  messageParts.push("");
+  messageParts.push(body);
   return messageParts.join("\r\n");
 }
 
@@ -115,7 +118,9 @@ async function executeGmailSendEmail(step, context) {
   }
 
   // 3. Construct RFC 2822 MIME message & Base64url encode it
-  const rawMime = buildMimeMessage({ to, subject, body });
+  const providerParts = connection.provider.split(":");
+  const fromEmail = providerParts[1] || "";
+  const rawMime = buildMimeMessage({ to, subject, body, from: fromEmail });
   const encodedRaw = base64urlEncode(rawMime);
 
   // 4. Send email via Gmail API (handling 401 token refresh retry if needed)
