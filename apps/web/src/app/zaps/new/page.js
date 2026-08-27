@@ -787,11 +787,26 @@ export default function NewZapBuilderPage() {
                         <p className="text-xs text-red-300 mb-2 font-mono">{testStepResult.error}</p>
                       )}
                       {testStepResult.output && (
-                        <div>
-                          <p className="text-[11px] text-slate-400 mb-1 font-mono uppercase">Output</p>
-                          <pre className="p-3 bg-[#0d1117] rounded-lg text-[11px] text-slate-300 font-mono max-h-48 overflow-y-auto border border-slate-800">
-                            {JSON.stringify(testStepResult.output, null, 2)}
-                          </pre>
+                        <div className="space-y-2">
+                          <p className="text-[11px] text-slate-400 font-mono uppercase font-bold">Step Output Table</p>
+                          <div className="border border-slate-800 rounded-lg overflow-hidden font-mono text-xs">
+                            <table className="w-full text-left border-collapse">
+                              <thead>
+                                <tr className="bg-slate-900 border-b border-slate-800 text-slate-400 text-[11px]">
+                                  <th className="p-2 border-r border-slate-800">Key</th>
+                                  <th className="p-2">Value</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {Object.entries(testStepResult.output).map(([k, v]) => (
+                                  <tr key={k} className="border-b border-slate-800/60 hover:bg-slate-900/50">
+                                    <td className="p-2 text-[#c4f542] font-semibold border-r border-slate-800">{k}</td>
+                                    <td className="p-2 text-slate-200 truncate max-w-xs">{typeof v === "object" ? JSON.stringify(v) : String(v)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
                         </div>
                       )}
                     </div>
