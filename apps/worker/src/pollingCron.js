@@ -13,7 +13,7 @@ const zapExecutionQueue = new Queue("zap-execution", { connection });
 const POLL_CYCLE_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
- * Fetches all active POLLING triggers, executes their configured HTTP GET,
+ * Fetches all active POLLING triggers, executes API checks (HTTP or Google Sheets),
  * hashes the response, and queues a ZapRun if new data is detected.
  */
 async function runPollingCycle() {
@@ -24,31 +24,51 @@ async function runPollingCycle() {
       type: "POLLING",
       zap: { status: "ENABLED" },
     },
-    include: { zap: true },
+    include: { zap: true, connection: true },
   });
 
   console.log(`[polling] Found ${triggers.length} active polling trigger(s)`);
 
   for (const trigger of triggers) {
     try {
-      const url = trigger.config?.url;
-      if (!url) {
-        console.log(`[polling] Trigger ${trigger.id} has no URL configured, skipping`);
-        continue;
+      let data = null;
+
+      if (trigger.config?.provider === "google_sheets" && trigger.connection) {
+        const spreadsheetId = trigger.config?.spreadsheetId;
+        const range = trigger.config?.range || "Sheet1!A1:Z";
+        const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
+        
+        const res = await fetch(url, {
+          headers: { Authorization: `Bearer ${trigger.connection.accessToken}` },
+        });
+        if (!res.ok) {
+          console.log(`[polling] Google Sheets poll failed for trigger ${trigger.id}: ${res.status}`);
+          continue;
+        }
+        data = await res.json();
+      } else {
+        const url = trigger.config?.url;
+        if (!url) {
+          console.log(`[polling] Trigger ${trigger.id} has no URL configured, skipping`);
+          continue;
+        }
+
+        const headers = trigger.config?.headers || {};
+        const res = await fetch(url, {
+          method: "GET",
+          headers: { "Content-Type": "application/json", ...headers },
+        });
+
+        if (!res.ok) {
+          console.log(`[polling] Trigger ${trigger.id} fetch failed: ${res.status}`);
+          continue;
+        }
+
+        data = await res.json();
       }
 
-      const headers = trigger.config?.headers || {};
-      const res = await fetch(url, {
-        method: "GET",
-        headers: { "Content-Type": "application/json", ...headers },
-      });
+      if (!data) continue;
 
-      if (!res.ok) {
-        console.log(`[polling] Trigger ${trigger.id} fetch failed: ${res.status}`);
-        continue;
-      }
-
-      const data = await res.json();
       const dataStr = JSON.stringify(data);
       const hash = crypto.createHash("sha256").update(dataStr).digest("hex");
 
@@ -92,9 +112,8 @@ async function runPollingCycle() {
   console.log("[polling] Cycle complete");
 }
 
-// Run immediately on startup, then repeat every POLL_CYCLE_MS
 async function start() {
-  console.log("[polling] Polling cron started (interval: 5 min)");
+  console.log("[polling] Polling cron engine started (interval: 5 min)");
 
   while (true) {
     try {
