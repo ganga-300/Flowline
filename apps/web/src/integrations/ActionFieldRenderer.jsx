@@ -1,29 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { DataPicker } from "./DataPicker";
+import { PillInput } from "./PillInput";
+import { VariablePickerModal } from "./VariablePickerModal";
 
 /**
  * Generic Field Renderer for Integration Action & Trigger Form Fields
- * 
- * @param {Object} props
- * @param {import("./types").FieldDefinition} props.field - Field definition schema
- * @param {any} props.value - Current field value
- * @param {Object} [props.sampleData] - Sample data for DataPicker
- * @param {Array} [props.steps] - Steps list for DataPicker
- * @param {(key: string, value: any) => void} props.onChange - Field change callback
  */
 export function ActionFieldRenderer({ field, value, sampleData = {}, steps = [], onChange }) {
   const { key, label, type, required, placeholder, description } = field;
   const [showPicker, setShowPicker] = useState(false);
 
-  const handleChange = (e) => {
-    onChange(key, e.target.value);
-  };
-
-  const handleSelectVariable = (variableToken) => {
+  const handleSelectVariable = (item) => {
+    const token = typeof item === "string" ? item : item.token;
     const currentValue = value || "";
-    const newValue = currentValue ? `${currentValue} ${variableToken}` : variableToken;
+    const newValue = currentValue ? `${currentValue} ${token}` : token;
     onChange(key, newValue);
     setShowPicker(false);
   };
@@ -45,26 +36,16 @@ export function ActionFieldRenderer({ field, value, sampleData = {}, steps = [],
         </button>
       </div>
 
-      {type === "textarea" ? (
-        <textarea
-          rows={5}
-          value={value || ""}
-          placeholder={placeholder || ""}
-          onChange={handleChange}
-          className="w-full bg-[#0d1117] border border-slate-700 rounded-lg p-3 text-xs text-white font-mono placeholder:text-slate-600 focus:border-[#c4f542] focus:ring-1 focus:ring-[#c4f542] outline-none transition-colors"
-        />
-      ) : (
-        <input
-          type="text"
-          value={value || ""}
-          placeholder={placeholder || ""}
-          onChange={handleChange}
-          className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white font-mono placeholder:text-slate-600 focus:border-[#c4f542] focus:ring-1 focus:ring-[#c4f542] outline-none transition-colors"
-        />
-      )}
+      <PillInput
+        value={value || ""}
+        placeholder={placeholder || ""}
+        isTextArea={type === "textarea"}
+        rows={type === "textarea" ? 5 : 1}
+        onChange={(newVal) => onChange(key, newVal)}
+      />
 
       {showPicker && (
-        <DataPicker
+        <VariablePickerModal
           sampleData={sampleData}
           steps={steps}
           onSelect={handleSelectVariable}
