@@ -7,6 +7,7 @@ import { authFetch } from "@/lib/api";
 import { useAuthProtection } from "@/lib/useAuthProtection";
 import { getIntegration, getIntegrationAction } from "@/integrations";
 import { ActionIntegrationSelector } from "@/integrations/ActionIntegrationSelector";
+import { triggerProviders } from "@/integrations/triggers";
 
 // ── Icons ────────────────────────────────────────────────────────────
 function ZapIcon({ className = "w-5 h-5" }) {
@@ -815,72 +816,69 @@ export default function NewZapBuilderPage() {
               ) : (
                 /* ── Setup Tab Forms ── */
                 <div className="space-y-5">
-                  {/* TRIGGER FORM */}
+                  {/* APP-CENTRIC TRIGGER FORM */}
                   {activePanel.target === "trigger" && (
                     <>
                       <div>
                         <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                          Trigger Type
+                          App Provider
                         </label>
                         <select
-                          value={panelDraft.type}
-                          onChange={(e) =>
-                            setPanelDraft({ ...panelDraft, type: e.target.value })
-                          }
+                          value={panelDraft.config?.provider || "webhook"}
+                          onChange={(e) => {
+                            const pId = e.target.value;
+                            const p = triggerProviders.find((tp) => tp.id === pId) || triggerProviders[0];
+                            const firstEvt = p.events[0];
+                            setPanelDraft({
+                              ...panelDraft,
+                              type: firstEvt.type,
+                              config: {
+                                ...panelDraft.config,
+                                provider: pId,
+                                event: firstEvt.id,
+                              },
+                            });
+                          }}
                           className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:border-[#c4f542] focus:ring-1 focus:ring-[#c4f542] outline-none"
                         >
-                          <option value="WEBHOOK">Webhook (Catch incoming requests)</option>
-                          <option value="POLLING">Polling (Fetch external URL repeatedly)</option>
+                          {triggerProviders.map((tp) => (
+                            <option key={tp.id} value={tp.id}>
+                              {tp.name} — {tp.description}
+                            </option>
+                          ))}
                         </select>
                       </div>
 
-                      {panelDraft.type === "POLLING" && (
-                        <>
-                          <div>
-                            <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                              Polling URL
-                            </label>
-                            <input
-                              type="url"
-                              placeholder="https://api.example.com/items"
-                              value={panelDraft.config?.url || ""}
-                              onChange={(e) =>
-                                setPanelDraft({
-                                  ...panelDraft,
-                                  config: { ...panelDraft.config, url: e.target.value },
-                                })
-                              }
-                              className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white font-mono placeholder:text-slate-600 focus:border-[#c4f542] focus:ring-1 focus:ring-[#c4f542] outline-none"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                              Poll Interval (seconds)
-                            </label>
-                            <input
-                              type="number"
-                              min="5"
-                              placeholder="60"
-                              value={panelDraft.pollIntervalSec || 60}
-                              onChange={(e) =>
-                                setPanelDraft({
-                                  ...panelDraft,
-                                  pollIntervalSec: e.target.value,
-                                })
-                              }
-                              className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white font-mono focus:border-[#c4f542] focus:ring-1 focus:ring-[#c4f542] outline-none"
-                            />
-                          </div>
-                        </>
-                      )}
-
-                      {panelDraft.type === "WEBHOOK" && (
-                        <div className="p-4 bg-slate-900/60 rounded-lg border border-slate-800 text-xs text-slate-400 space-y-1 font-mono">
-                          <p className="text-slate-300 font-semibold">Webhook Endpoint:</p>
-                          <p>Will be generated automatically upon publishing this Zap.</p>
-                        </div>
-                      )}
+                      <div>
+                        <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                          Trigger Event ("When this happens...")
+                        </label>
+                        <select
+                          value={panelDraft.config?.event || "catch_hook"}
+                          onChange={(e) => {
+                            const evtId = e.target.value;
+                            const curP = triggerProviders.find((tp) => tp.id === (panelDraft.config?.provider || "webhook")) || triggerProviders[0];
+                            const evt = curP.events.find((ev) => ev.id === evtId) || curP.events[0];
+                            setPanelDraft({
+                              ...panelDraft,
+                              type: evt.type,
+                              config: {
+                                ...panelDraft.config,
+                                event: evtId,
+                              },
+                            });
+                          }}
+                          className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white font-mono focus:border-[#c4f542] outline-none"
+                        >
+                          {(
+                            triggerProviders.find((tp) => tp.id === (panelDraft.config?.provider || "webhook")) || triggerProviders[0]
+                          ).events.map((evt) => (
+                            <option key={evt.id} value={evt.id}>
+                              {evt.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
                       <div className="pt-3 border-t border-slate-800">
                         <div className="flex items-center justify-between mb-1.5">
