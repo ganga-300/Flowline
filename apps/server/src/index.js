@@ -7,6 +7,7 @@ const webhooksRouter = require("./routes/webhooks");
 const connectionsRouter = require("./routes/connections");
 const testStepRouter = require("./routes/testStep");
 const alertsRouter = require("./routes/alerts");
+const optionsRouter = require("./routes/options");
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.use("/auth", authRouter);
 app.use("/webhooks", webhooksRouter);
 app.use("/zaps/test-step", testStepRouter);
 app.use("/zaps", zapsRouter);
+app.use("/connections", optionsRouter);
 app.use("/connections", connectionsRouter);
 app.use("/alerts", alertsRouter);
 

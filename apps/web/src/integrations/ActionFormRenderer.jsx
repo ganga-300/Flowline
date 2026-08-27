@@ -15,7 +15,7 @@ import { ActionFieldRenderer } from "./ActionFieldRenderer";
  * @param {Array} [props.steps] - All steps for DataPicker
  * @param {(newValues: Object) => void} props.onChange - Callback when any field value changes
  */
-export function ActionFormRenderer({ providerId, actionId, values = {}, sampleData = {}, steps = [], onChange }) {
+export function ActionFormRenderer({ providerId, actionId, connectionId, values = {}, sampleData = {}, steps = [], onChange }) {
   const action = getIntegrationAction(providerId, actionId);
 
   if (!action || !action.fields || action.fields.length === 0) {
@@ -44,6 +44,7 @@ export function ActionFormRenderer({ providerId, actionId, values = {}, sampleDa
           key={field.key}
           field={field}
           value={values[field.key]}
+          connectionId={connectionId}
           sampleData={sampleData}
           steps={steps}
           onChange={handleFieldChange}

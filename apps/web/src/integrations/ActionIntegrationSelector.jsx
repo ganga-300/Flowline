@@ -105,6 +105,7 @@ export function ActionIntegrationSelector({ config, sampleData = {}, steps = [],
               <ActionFormRenderer
                 providerId={selectedProvider}
                 actionId={selectedAction}
+                connectionId={connectionId}
                 values={actionValues}
                 sampleData={sampleData}
                 steps={steps}
