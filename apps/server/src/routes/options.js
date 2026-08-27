@@ -40,7 +40,7 @@ router.get("/:id/options", requireAuth, async (req, res) => {
       });
     }
 
-    if (type === "google_sheets") {
+    if (type === "google_sheets" || type === "sheets") {
       const driveRes = await fetch(
         "https://www.googleapis.com/drive/v3/files?q=mimeType='application/vnd.google-apps.spreadsheet'&pageSize=20",
         {

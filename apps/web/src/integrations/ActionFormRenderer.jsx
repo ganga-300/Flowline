@@ -57,7 +57,11 @@ export function ActionFormRenderer({ providerId, actionId, connectionId, values 
     <div className="space-y-4 pt-2 border-t border-slate-800/80">
       <div className="text-xs font-mono text-[#c4f542] font-semibold tracking-wide uppercase flex items-center justify-between">
         <span>{action.name} Configuration</span>
-        {loadingDeps && <span className="text-[10px] text-slate-400 animate-pulse">Loading dependent fields...</span>}
+        {loadingDeps && (
+          <span className="text-[11px] font-mono text-[#c4f542] animate-pulse flex items-center gap-1">
+            <span>⏳</span> Loading Worksheet Tabs...
+          </span>
+        )}
       </div>
 
       {allFields.map((field) => (
