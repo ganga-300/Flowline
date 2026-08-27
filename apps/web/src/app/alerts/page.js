@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { authFetch, useAuthProtection } from "../../lib/api";
+import { authFetch } from "@/lib/api";
+import { useAuthProtection } from "@/lib/useAuthProtection";
 
 export default function AlertsPage() {
   useAuthProtection();
