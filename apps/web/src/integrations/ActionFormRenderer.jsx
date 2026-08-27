@@ -1,22 +1,40 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { getIntegrationAction } from "./index";
 import { ActionFieldRenderer } from "./ActionFieldRenderer";
+import { authFetch } from "@/lib/api";
 
 /**
  * Dynamic Action Form Renderer
- * Reads fields from selected integration action schema and renders field inputs.
- * 
- * @param {Object} props
- * @param {string} props.providerId - Integration provider ID (e.g. 'gmail')
- * @param {string} props.actionId - Action ID (e.g. 'send_email')
- * @param {Object} props.values - Current field values object { to: '...', subject: '...' }
- * @param {Object} [props.sampleData] - Sample trigger data for DataPicker
- * @param {Array} [props.steps] - All steps for DataPicker
- * @param {(newValues: Object) => void} props.onChange - Callback when any field value changes
+ * Reads fields from selected integration action schema, listens to parent field changes (`dependsOn`),
+ * and dynamically renders child fields.
  */
 export function ActionFormRenderer({ providerId, actionId, connectionId, values = {}, sampleData = {}, steps = [], onChange }) {
   const action = getIntegrationAction(providerId, actionId);
+  const [dependentFields, setDependentFields] = useState([]);
+  const [loadingDeps, setLoadingDeps] = useState(false);
+
+  // Watch for parent field changes (e.g. spreadsheetId) to fetch dependent child fields
+  useEffect(() => {
+    if (connectionId && providerId && values.spreadsheetId) {
+      fetchDependentFields("spreadsheetId", values.spreadsheetId);
+    }
+  }, [connectionId, providerId, values.spreadsheetId]);
+
+  const fetchDependentFields = async (parentKey, parentValue) => {
+    try {
+      setLoadingDeps(true);
+      const url = `http://localhost:4000/connections/${connectionId}/dynamic-fields?provider=${providerId}&action=${actionId}&parentKey=${parentKey}&parentValue=${encodeURIComponent(parentValue)}`;
+      const res = await authFetch(url);
+      const data = await res.json();
+      setDependentFields(data.fields || []);
+    } catch (err) {
+      console.error("Failed to fetch dependent fields", err);
+    } finally {
+      setLoadingDeps(false);
+    }
+  };
 
   if (!action || !action.fields || action.fields.length === 0) {
     return (
@@ -33,13 +51,16 @@ export function ActionFormRenderer({ providerId, actionId, connectionId, values 
     });
   };
 
+  const allFields = [...action.fields, ...dependentFields];
+
   return (
     <div className="space-y-4 pt-2 border-t border-slate-800/80">
-      <div className="text-xs font-mono text-[#c4f542] font-semibold tracking-wide uppercase">
-        {action.name} Configuration
+      <div className="text-xs font-mono text-[#c4f542] font-semibold tracking-wide uppercase flex items-center justify-between">
+        <span>{action.name} Configuration</span>
+        {loadingDeps && <span className="text-[10px] text-slate-400 animate-pulse">Loading dependent fields...</span>}
       </div>
 
-      {action.fields.map((field) => (
+      {allFields.map((field) => (
         <ActionFieldRenderer
           key={field.key}
           field={field}
