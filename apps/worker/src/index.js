@@ -200,6 +200,44 @@ async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterS
       continue;
     }
 
+    if (step.type === "LOOP") {
+      const { resolvePath } = require("./conditions");
+      const arrayPath = step.config?.arrayPath || "trigger.items";
+      const rawArray = resolvePath(context, arrayPath);
+      const items = Array.isArray(rawArray) ? rawArray : (rawArray != null ? [rawArray] : []);
+
+      const children = allSteps
+        .filter((s) => s.parentStepId === step.id)
+        .sort((a, b) => a.order - b.order);
+
+      const loopResults = [];
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const loopContext = {
+          ...context,
+          loopItem: item,
+          loopIndex: i,
+        };
+
+        if (children.length > 0) {
+          await executeStepList(children, allSteps, loopContext, zapRunId);
+        }
+        loopResults.push({ index: i, item });
+      }
+
+      await prisma.stepExecution.create({
+        data: {
+          zapRunId,
+          stepId: step.id,
+          status: "SUCCESS",
+          output: { iteratedCount: items.length, items: loopResults },
+        },
+      });
+
+      continue;
+    }
+
     // ACTION step (AI/transform would slot in here later the same way)
     const stepExecution = await prisma.stepExecution.create({
       data: { zapRunId, stepId: step.id, status: "RUNNING" },
