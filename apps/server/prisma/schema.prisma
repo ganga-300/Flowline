@@ -89,6 +89,7 @@ model Zap {
   trigger     Trigger?
   steps       Step[]
   runs        ZapRun[]
+  alerts      Alert[]
   userId String
   user   User @relation(fields: [userId], references: [id])
 }
@@ -218,4 +219,21 @@ model User {
   createdAt DateTime @default(now())
   zaps      Zap[]
   connections Connection[]
+  alerts    Alert[]
+}
+
+model Alert {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  zapId       String
+  zap         Zap      @relation(fields: [zapId], references: [id], onDelete: Cascade)
+  zapRunId    String
+  stepId      String?
+  message     String
+  errorTrace  String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([zapId])
 }

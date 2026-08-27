@@ -114,6 +114,13 @@ export default function DashboardPage() {
           </Link>
 
           <Link
+            href="/alerts"
+            className="text-xs font-mono text-red-400 hover:text-red-300 px-3 py-2 rounded-lg border border-red-900/50 hover:border-red-700/80 transition-all flex items-center gap-1.5"
+          >
+            <span>🔔 Alerts</span>
+          </Link>
+
+          <Link
             href="/zaps/new"
             className="bg-[#c4f542] hover:bg-[#b0e030] text-black font-semibold px-4 py-2 rounded-lg transition-all shadow-[0_0_15px_rgba(196,245,66,0.2)] hover:shadow-[0_0_25px_rgba(196,245,66,0.35)] flex items-center gap-2 text-xs font-mono"
           >

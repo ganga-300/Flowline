@@ -325,6 +325,24 @@ const worker = new Worker(
         data: { status: "FAILED" },
       });
       console.error(`[worker] job ${job.id} failed:`, err.message);
+
+      try {
+        const zap = await prisma.zap.findUnique({ where: { id: run.zapId } });
+        if (zap) {
+          await prisma.alert.create({
+            data: {
+              userId: zap.userId,
+              zapId: zap.id,
+              zapRunId,
+              message: `Zap "${zap.zapName}" failed during execution: ${err.message}`,
+              errorTrace: err.stack || err.message,
+            },
+          });
+          console.log(`[worker] Created failure Alert for user ${zap.userId}`);
+        }
+      } catch (alertErr) {
+        console.error(`[worker] Failed to create alert:`, alertErr.message);
+      }
     }
   },
   { connection }
