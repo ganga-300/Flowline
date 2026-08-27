@@ -4,7 +4,7 @@ import { integrationsList, getIntegration } from "./index";
 import { ActionFormRenderer } from "./ActionFormRenderer";
 import { ConnectionSelector } from "./ConnectionSelector";
 
-export function ActionIntegrationSelector({ config, onChange }) {
+export function ActionIntegrationSelector({ config, sampleData = {}, steps = [], onChange }) {
   const selectedProvider = config?.provider || "custom_http";
   const selectedAction = config?.action || "";
   const connectionId = config?.connectionId || null;
@@ -106,6 +106,8 @@ export function ActionIntegrationSelector({ config, onChange }) {
                 providerId={selectedProvider}
                 actionId={selectedAction}
                 values={actionValues}
+                sampleData={sampleData}
+                steps={steps}
                 onChange={(newFieldValues) => {
                   onChange({
                     provider: selectedProvider,
@@ -122,4 +124,3 @@ export function ActionIntegrationSelector({ config, onChange }) {
     </div>
   );
 }
-

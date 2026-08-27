@@ -157,6 +157,14 @@ export default function NewZapBuilderPage() {
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishError, setPublishError] = useState(null);
   const [successToast, setSuccessToast] = useState(null);
+  const [sampleData, setSampleData] = useState({
+    body: {
+      email: "user@example.com",
+      name: "Alex Smith",
+      subject: "New Registration",
+      message: "Hello from Flowline!",
+    },
+  });
 
   // Process return query params from Google OAuth redirect (/zaps/new?connected=gmail&connectionId=...)
   useEffect(() => {
@@ -786,6 +794,27 @@ export default function NewZapBuilderPage() {
                           <p>Will be generated automatically upon publishing this Zap.</p>
                         </div>
                       )}
+
+                      <div className="pt-3 border-t border-slate-800">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="block text-xs font-medium text-slate-300">
+                            Sample Trigger Data
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSuccessToast("Sample trigger data reloaded!");
+                              setTimeout(() => setSuccessToast(null), 3000);
+                            }}
+                            className="text-[11px] font-mono text-[#c4f542] hover:underline cursor-pointer"
+                          >
+                            ⚡ Test Trigger / Fetch Sample
+                          </button>
+                        </div>
+                        <pre className="p-3 bg-[#0d1117] border border-slate-800 rounded-lg text-[11px] font-mono text-slate-300 max-h-36 overflow-y-auto">
+                          {JSON.stringify(sampleData, null, 2)}
+                        </pre>
+                      </div>
                     </>
                   )}
 
@@ -808,6 +837,8 @@ export default function NewZapBuilderPage() {
 
                       <ActionIntegrationSelector
                         config={panelDraft.config}
+                        sampleData={sampleData}
+                        steps={steps}
                         onChange={(newConfig) =>
                           setPanelDraft({
                             ...panelDraft,
