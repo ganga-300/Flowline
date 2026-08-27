@@ -22,7 +22,7 @@ function base64urlEncode(str) {
  * @param {string} params.body
  * @returns {string} RFC 2822 MIME message
  */
-function buildMimeMessage({ to, subject, body, from }) {
+function buildMimeMessage({ to, cc, bcc, subject, body, from }) {
   const messageParts = [
     `To: ${to}`,
     `Subject: ${subject}`,
@@ -31,6 +31,12 @@ function buildMimeMessage({ to, subject, body, from }) {
   ];
   if (from) {
     messageParts.push(`From: ${from}`);
+  }
+  if (cc) {
+    messageParts.push(`Cc: ${Array.isArray(cc) ? cc.join(", ") : cc}`);
+  }
+  if (bcc) {
+    messageParts.push(`Bcc: ${Array.isArray(bcc) ? bcc.join(", ") : bcc}`);
   }
   messageParts.push("");
   messageParts.push(body);
@@ -108,6 +114,8 @@ async function executeGmailSendEmail(step, context) {
   const rawTo = actionConfig.to || "";
   const rawSubject = actionConfig.subject || "";
   const rawBody = actionConfig.body || "";
+  const cc = actionConfig.cc;
+  const bcc = actionConfig.bcc;
 
   const to = resolveTemplate(context, rawTo);
   const subject = resolveTemplate(context, rawSubject);
@@ -120,7 +128,7 @@ async function executeGmailSendEmail(step, context) {
   // 3. Construct RFC 2822 MIME message & Base64url encode it
   const providerParts = connection.provider.split(":");
   const fromEmail = providerParts[1] || "";
-  const rawMime = buildMimeMessage({ to, subject, body, from: fromEmail });
+  const rawMime = buildMimeMessage({ to, cc, bcc, subject, body, from: fromEmail });
   const encodedRaw = base64urlEncode(rawMime);
 
   // 4. Send email via Gmail API (handling 401 token refresh retry if needed)
