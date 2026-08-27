@@ -1,4 +1,7 @@
 const executeGmailSendEmail = require("./gmail/sendEmail");
+const executeSlackSendMessage = require("./slack/sendMessage");
+const executeDiscordSendMessage = require("./discord/sendMessage");
+const executeGoogleSheetsAppendRow = require("./google_sheets/appendRow");
 
 /**
  * Worker Integration Registry
@@ -6,6 +9,9 @@ const executeGmailSendEmail = require("./gmail/sendEmail");
  */
 const integrationRegistry = {
   "gmail:send_email": executeGmailSendEmail,
+  "slack:send_message": executeSlackSendMessage,
+  "discord:send_message": executeDiscordSendMessage,
+  "google_sheets:append_row": executeGoogleSheetsAppendRow,
 };
 
 /**

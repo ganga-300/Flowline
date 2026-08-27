@@ -1,10 +1,16 @@
 import { gmailIntegration } from "./gmail";
+import { slackIntegration } from "./slack";
+import { discordIntegration } from "./discord";
+import { googleSheetsIntegration } from "./google_sheets";
 
 /**
  * Registry map of all available integrations indexed by provider ID
  */
 export const integrations = {
   [gmailIntegration.id]: gmailIntegration,
+  [slackIntegration.id]: slackIntegration,
+  [discordIntegration.id]: discordIntegration,
+  [googleSheetsIntegration.id]: googleSheetsIntegration,
 };
 
 /**
