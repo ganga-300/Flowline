@@ -5,6 +5,7 @@ const zapsRouter = require("./routes/zaps");
 const authRouter = require("./routes/auth");
 const webhooksRouter = require("./routes/webhooks");
 const connectionsRouter = require("./routes/connections");
+const testStepRouter = require("./routes/testStep");
 
 const app = express();
 
@@ -15,6 +16,7 @@ app.use(express.json());
 
 app.use("/auth", authRouter);
 app.use("/webhooks", webhooksRouter);
+app.use("/zaps/test-step", testStepRouter);
 app.use("/zaps", zapsRouter);
 app.use("/connections", connectionsRouter);
 

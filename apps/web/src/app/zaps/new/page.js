@@ -165,6 +165,8 @@ export default function NewZapBuilderPage() {
       message: "Hello from Flowline!",
     },
   });
+  const [testStepLoading, setTestStepLoading] = useState(false);
+  const [testStepResult, setTestStepResult] = useState(null);
 
   // Process return query params from Google OAuth redirect (/zaps/new?connected=gmail&connectionId=...)
   useEffect(() => {
@@ -715,15 +717,77 @@ export default function NewZapBuilderPage() {
             {/* Tab Body Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               {activePanel.tab === "test" ? (
-                /* ── Test Tab Placeholder ── */
-                <div className="text-center py-12 px-4 bg-slate-900/50 border border-slate-800 rounded-xl">
-                  <div className="w-12 h-12 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center mx-auto mb-3">
-                    <ZapIcon className="w-6 h-6" />
+                /* ── Test Tab ── */
+                <div className="space-y-4">
+                  <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl space-y-3">
+                    <h4 className="text-sm font-semibold text-slate-200">Test This Step</h4>
+                    <p className="text-xs text-slate-400">
+                      Run this step with sample data to verify it works before publishing.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={testStepLoading}
+                      onClick={async () => {
+                        setTestStepLoading(true);
+                        setTestStepResult(null);
+                        try {
+                          const token = localStorage.getItem("flowline_token");
+                          const stepPayload = {
+                            step: panelDraft,
+                            sampleContext: { trigger: sampleData, steps: {} },
+                          };
+                          const res = await fetch("http://localhost:4000/zaps/test-step", {
+                            method: "POST",
+                            headers: {
+                              "Content-Type": "application/json",
+                              Authorization: `Bearer ${token}`,
+                            },
+                            body: JSON.stringify(stepPayload),
+                          });
+                          const data = await res.json();
+                          setTestStepResult(data);
+                        } catch (err) {
+                          setTestStepResult({ status: "ERROR", error: err.message, output: null });
+                        } finally {
+                          setTestStepLoading(false);
+                        }
+                      }}
+                      className={`w-full py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                        testStepLoading
+                          ? "bg-slate-700 text-slate-400"
+                          : "bg-[#c4f542] text-[#0d1117] hover:bg-[#d4ff62]"
+                      }`}
+                    >
+                      {testStepLoading ? "⏳ Running..." : "⚡ Test Step Now"}
+                    </button>
                   </div>
-                  <h4 className="text-sm font-medium text-slate-200 mb-1">Test after saving</h4>
-                  <p className="text-xs text-slate-400 max-w-xs mx-auto">
-                    You can execute and test this step live once you save and publish your Zap.
-                  </p>
+
+                  {testStepResult && (
+                    <div className={`p-4 rounded-xl border ${
+                      testStepResult.status === "SUCCESS"
+                        ? "bg-green-950/40 border-green-700"
+                        : "bg-red-950/40 border-red-700"
+                    }`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={`text-xs font-mono font-bold ${
+                          testStepResult.status === "SUCCESS" ? "text-green-400" : "text-red-400"
+                        }`}>
+                          {testStepResult.status === "SUCCESS" ? "✓ SUCCESS" : "✕ ERROR"}
+                        </span>
+                      </div>
+                      {testStepResult.error && (
+                        <p className="text-xs text-red-300 mb-2 font-mono">{testStepResult.error}</p>
+                      )}
+                      {testStepResult.output && (
+                        <div>
+                          <p className="text-[11px] text-slate-400 mb-1 font-mono uppercase">Output</p>
+                          <pre className="p-3 bg-[#0d1117] rounded-lg text-[11px] text-slate-300 font-mono max-h-48 overflow-y-auto border border-slate-800">
+                            {JSON.stringify(testStepResult.output, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : (
                 /* ── Setup Tab Forms ── */
