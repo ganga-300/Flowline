@@ -112,6 +112,8 @@ model Trigger {
 
   pollIntervalSec     Int?
 
+  lastPollHash        String?
+
   createdAt           DateTime    @default(now())
 }
 
