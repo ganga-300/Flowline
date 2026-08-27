@@ -67,6 +67,8 @@ model Connection {
 
   triggers      Trigger[]
   steps         Step[]
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 }
 
 
@@ -211,4 +213,5 @@ model User {
   password  String
   createdAt DateTime @default(now())
   zaps      Zap[]
+  connections Connection[]
 }

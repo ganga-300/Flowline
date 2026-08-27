@@ -3,6 +3,7 @@ const router = express.Router();
 const prisma = require("../prismaClient");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const requireAuth = require("../middleware/auth");
 
 // Step 1: user ko GitHub ki authorization page pe bhejo
 router.get("/github", (req, res) => {
@@ -47,8 +48,9 @@ router.get("/github/callback", async (req, res) => {
   res.json({ connected: true, connectionId: connection.id, provider: "github" });
 });
 
-router.get("/connections", async (req, res) => {
+router.get("/connections", requireAuth, async (req, res) => {
   const connections = await prisma.connection.findMany({
+    where: { userId: req.userId },
     select: { id: true, provider: true, createdAt: true },
   });
   res.json({ connections });

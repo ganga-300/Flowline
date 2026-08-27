@@ -2,26 +2,23 @@ const express = require("express");
 const jwt = require("jsonwebtoken");
 const router = express.Router();
 const prisma = require("../../prismaClient");
+const requireAuth = require("../../middleware/auth");
+
+// Helper middleware: support token in query parameter for browser redirects
+const authMiddleware = (req, res, next) => {
+  if (!req.headers.authorization && req.query.token) {
+    req.headers.authorization = `Bearer ${req.query.token}`;
+  }
+  requireAuth(req, res, next);
+};
 
 /**
  * GET /connections/gmail/start
  * Initiates the Google OAuth 2.0 flow for Gmail permissions.
- * Expects JWT token in query parameter `token` or Authorization header.
+ * Expects JWT token in Authorization header or query parameter `token`.
  */
-router.get("/start", (req, res) => {
-  const token = req.query.token || (req.headers.authorization && req.headers.authorization.split(" ")[1]);
-
-  if (!token) {
-    return res.status(401).json({ error: "Authentication token required to connect Gmail account" });
-  }
-
-  let userId;
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    userId = decoded.userId;
-  } catch {
-    return res.status(401).json({ error: "Invalid or expired authentication token" });
-  }
+router.get("/start", authMiddleware, (req, res) => {
+  const userId = req.userId;
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -84,6 +81,7 @@ router.get("/callback", async (req, res) => {
   let decodedState;
   try {
     decodedState = jwt.verify(state, process.env.JWT_SECRET);
+    req.userId = decodedState.userId;
   } catch {
     return res.redirect(`${frontendAppUrl}/zaps/new?error=${encodeURIComponent("Invalid or expired OAuth state token")}`);
   }
@@ -131,12 +129,13 @@ router.get("/callback", async (req, res) => {
 
     const providerValue = accountEmail ? `gmail:${accountEmail}` : "gmail";
 
-    // 3. Persist connection record in database
+    // 3. Persist connection record in database linked to req.userId
     const connection = await prisma.connection.create({
       data: {
         provider: providerValue,
         accessToken: tokenData.access_token,
         refreshToken: tokenData.refresh_token || null,
+        userId: req.userId,
       },
     });
 

@@ -15,7 +15,7 @@ router.get("/", requireAuth, async (req, res) => {
   try {
     const { provider } = req.query;
 
-    const where = {};
+    const where = { userId: req.userId };
     if (provider) {
       where.provider = { startsWith: provider };
     }

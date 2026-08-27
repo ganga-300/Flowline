@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState,useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { authFetch } from "@/lib/api";
@@ -156,6 +156,43 @@ export default function NewZapBuilderPage() {
   const [stepSelectorIndex, setStepSelectorIndex] = useState(null); // index to insert step after
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishError, setPublishError] = useState(null);
+  const [successToast, setSuccessToast] = useState(null);
+
+  // Process return query params from Google OAuth redirect (/zaps/new?connected=gmail&connectionId=...)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const connected = urlParams.get("connected");
+    const connectionIdParam = urlParams.get("connectionId");
+    const errorParam = urlParams.get("error");
+
+    if (connected === "gmail" && connectionIdParam) {
+      queueMicrotask(() => {
+        setSuccessToast("Gmail connected successfully!");
+        setSteps((prevSteps) =>
+          prevSteps.map((s) => {
+            if (s.type === "ACTION" && s.config?.provider === "gmail") {
+              return {
+                ...s,
+                isConfigured: true,
+                config: {
+                  ...s.config,
+                  connectionId: connectionIdParam,
+                },
+              };
+            }
+            return s;
+          })
+        );
+      });
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (errorParam) {
+      queueMicrotask(() => {
+        setPublishError(errorParam);
+      });
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   // Draft state for side panel editing
   const [panelDraft, setPanelDraft] = useState(null);
@@ -442,6 +479,22 @@ export default function NewZapBuilderPage() {
           </button>
         </div>
       </header>
+
+      {/* ── Global Top Success Toast (OAuth completion) ── */}
+      {successToast && (
+        <div className="bg-[#c4f542]/10 border-b border-[#c4f542]/30 text-[#c4f542] px-6 py-3 text-sm flex items-center justify-between font-mono animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <span className="font-bold">✓ Success:</span>
+            <span>{successToast}</span>
+          </div>
+          <button
+            onClick={() => setSuccessToast(null)}
+            className="text-slate-400 hover:text-white"
+          >
+            <XIcon className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* ── Global Top Error Banner (if error occurred on publish) ── */}
       {publishError && !activePanel && (
