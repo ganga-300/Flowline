@@ -128,11 +128,11 @@ export default function NewZapBuilderPage() {
 
   // Trigger state
   const [trigger, setTrigger] = useState({
-    type: "WEBHOOK", // "WEBHOOK" | "POLLING"
+    type: "WEBHOOK",
     config: {
-      url: "",
+      provider: "webhook",
+      event: "catch_hook",
     },
-    pollIntervalSec: 60,
     isConfigured: false,
   });
 
@@ -141,12 +141,8 @@ export default function NewZapBuilderPage() {
     {
       id: "step-1",
       type: "ACTION",
-      name: "HTTP Request Action",
-      config: {
-        method: "POST",
-        url: "",
-        body: "",
-      },
+      name: "Choose an App",
+      config: {},
       isConfigured: false,
     },
   ]);
@@ -239,8 +235,8 @@ export default function NewZapBuilderPage() {
 
     switch (type) {
       case "ACTION":
-        defaultStep.name = "HTTP Request";
-        defaultStep.config = { method: "POST", url: "", body: "" };
+        defaultStep.name = "Choose an App";
+        defaultStep.config = {};
         break;
       case "AI":
         defaultStep.name = "AI Prompt Transform";
@@ -306,15 +302,14 @@ export default function NewZapBuilderPage() {
 
   // One-line summary generators
   const getTriggerSummary = () => {
-    if (!trigger.isConfigured) return "Not configured yet";
-    if (trigger.type === "WEBHOOK") {
-      return "WEBHOOK • Catch incoming webhook HTTP requests";
-    }
-    return `POLLING • ${trigger.config.url || "URL not set"} (${trigger.pollIntervalSec || 60}s interval)`;
+    if (!trigger.isConfigured) return "Choose an app and event to get started";
+    const prov = triggerProviders.find((tp) => tp.id === (trigger.config?.provider || "webhook"));
+    const evt = prov?.events.find((ev) => ev.id === trigger.config?.event);
+    return `${prov?.name || "App"} → ${evt?.name || "Event selected"}`;
   };
 
   const getStepSummary = (step) => {
-    if (!step.isConfigured) return "Click to configure parameters";
+    if (!step.isConfigured) return "Click to choose an app and configure this step";
     switch (step.type) {
       case "ACTION":
         if (step.config?.provider) {
@@ -322,15 +317,15 @@ export default function NewZapBuilderPage() {
           const action = getIntegrationAction(step.config.provider, step.config.action);
           return `${provider?.name || step.config.provider} → ${action?.name || step.config.action}`;
         }
-        return `${step.config.method || "GET"} ${step.config.url || "URL missing"}`;
+        return "Choose an app to continue";
       case "AI":
         return step.config.prompt
           ? `Prompt: "${step.config.prompt.slice(0, 45)}${step.config.prompt.length > 45 ? "..." : ""}"`
-          : "Prompt configured";
+          : "AI transform configured";
       case "FILTER":
-        return `If ${step.config.path || "path"} ${step.config.operator || "EQUALS"} "${step.config.value || ""}"`;
+        return `Only continue if ${step.config.path || "field"} ${step.config.operator || "equals"} "${step.config.value || ""}"`;
       case "DELAY":
-        return `Delay for ${step.config.seconds || 0} seconds`;
+        return `Wait for ${step.config.seconds || 0} seconds`;
       default:
         return "Configured";
     }
@@ -547,16 +542,13 @@ export default function NewZapBuilderPage() {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2.5">
               <span className="font-mono text-xs font-bold text-[#c4f542] tracking-wider uppercase bg-[#c4f542]/10 px-2.5 py-1 rounded border border-[#c4f542]/20">
-                01. TRIGGER
-              </span>
-              <span className="text-xs font-mono text-slate-400">
-                {trigger.type}
+                01. WHEN THIS HAPPENS
               </span>
             </div>
             {trigger.isConfigured ? (
               <span className="flex items-center gap-1.5 text-xs text-[#c4f542] bg-[#c4f542]/10 px-2 py-0.5 rounded-full font-mono">
                 <span className="w-2 h-2 rounded-full bg-[#c4f542] animate-pulse" />
-                Configured
+                Ready
               </span>
             ) : (
               <span className="text-xs text-amber-400/90 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
@@ -572,9 +564,11 @@ export default function NewZapBuilderPage() {
             </div>
             <div className="flex-1 min-w-0">
               <h2 className="text-base font-semibold text-white truncate">
-                {trigger.type === "WEBHOOK" ? "Catch Webhook Event" : "Poll External API"}
+                {trigger.isConfigured
+                  ? (triggerProviders.find((tp) => tp.id === (trigger.config?.provider || "webhook"))?.name || "Trigger")
+                  : "Choose an App & Event"}
               </h2>
-              <p className="text-xs text-slate-400 truncate mt-0.5 font-mono">
+              <p className="text-xs text-slate-400 truncate mt-0.5">
                 {getTriggerSummary()}
               </p>
             </div>
@@ -614,15 +608,15 @@ export default function NewZapBuilderPage() {
                 {/* Card Header */}
                 <div className="flex items-center gap-2.5 mb-3">
                   <span className="font-mono text-xs font-bold text-[#c4f542] tracking-wider uppercase bg-[#c4f542]/10 px-2.5 py-1 rounded border border-[#c4f542]/20">
-                    {stepNumber}. {step.type}
+                    {stepNumber}. {step.type === "ACTION" ? "THEN DO THIS" : step.type === "FILTER" ? "ONLY CONTINUE IF" : step.type === "DELAY" ? "WAIT" : step.type === "AI" ? "AI TRANSFORM" : step.type}
                   </span>
                   {step.isConfigured ? (
                     <span className="flex items-center gap-1 text-xs text-[#c4f542] font-mono">
                       <CheckIcon className="w-3.5 h-3.5" />
                     </span>
                   ) : (
-                    <span className="text-xs text-slate-400 font-mono">
-                      Unconfigured
+                    <span className="text-xs text-slate-400">
+                      Setup Required
                     </span>
                   )}
                 </div>
@@ -634,7 +628,7 @@ export default function NewZapBuilderPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <h2 className="text-base font-semibold text-white truncate">
-                      {step.name || `${step.type} Step`}
+                      {step.config?.provider ? (getIntegration(step.config.provider)?.name || step.name || "Choose an App") : (step.name || "Choose an App")}
                     </h2>
                     <p className="text-xs text-slate-400 truncate mt-0.5 font-mono">
                       {getStepSummary(step)}
@@ -675,12 +669,12 @@ export default function NewZapBuilderPage() {
                 </div>
                 <div>
                   <div className="text-xs font-mono text-[#c4f542] uppercase tracking-wider">
-                    {activePanel.target === "trigger" ? "TRIGGER SETUP" : `${panelDraft.type} STEP`}
+                    {activePanel.target === "trigger" ? "WHEN THIS HAPPENS" : "THEN DO THIS"}
                   </div>
                   <h3 className="text-lg font-semibold text-white">
                     {activePanel.target === "trigger"
-                      ? "Configure Trigger"
-                      : panelDraft.name || `${panelDraft.type} Step`}
+                      ? "Choose an App & Event"
+                      : (panelDraft.config?.provider ? (getIntegration(panelDraft.config.provider)?.name || panelDraft.name || "Choose an App") : (panelDraft.name || "Choose an App"))}
                   </h3>
                 </div>
               </div>
@@ -821,7 +815,7 @@ export default function NewZapBuilderPage() {
                     <>
                       <div>
                         <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                          App Provider
+                          Choose App
                         </label>
                         <select
                           value={panelDraft.config?.provider || "webhook"}
@@ -843,15 +837,16 @@ export default function NewZapBuilderPage() {
                         >
                           {triggerProviders.map((tp) => (
                             <option key={tp.id} value={tp.id}>
-                              {tp.name} — {tp.description}
+                              {tp.name}
                             </option>
                           ))}
                         </select>
+                        <p className="text-[11px] text-slate-500 mt-1">{(triggerProviders.find((tp) => tp.id === (panelDraft.config?.provider || "webhook")) || triggerProviders[0]).description}</p>
                       </div>
 
                       <div>
                         <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                          Trigger Event ("When this happens...")
+                          When this happens...
                         </label>
                         <select
                           value={panelDraft.config?.event || "catch_hook"}
@@ -868,7 +863,7 @@ export default function NewZapBuilderPage() {
                               },
                             });
                           }}
-                          className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white font-mono focus:border-[#c4f542] outline-none"
+                          className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:border-[#c4f542] outline-none"
                         >
                           {(
                             triggerProviders.find((tp) => tp.id === (panelDraft.config?.provider || "webhook")) || triggerProviders[0]
@@ -880,25 +875,11 @@ export default function NewZapBuilderPage() {
                         </select>
                       </div>
 
-                      <div className="pt-3 border-t border-slate-800">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <label className="block text-xs font-medium text-slate-300">
-                            Sample Trigger Data
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSuccessToast("Sample trigger data reloaded!");
-                              setTimeout(() => setSuccessToast(null), 3000);
-                            }}
-                            className="text-[11px] font-mono text-[#c4f542] hover:underline cursor-pointer"
-                          >
-                            ⚡ Test Trigger / Fetch Sample
-                          </button>
-                        </div>
-                        <pre className="p-3 bg-[#0d1117] border border-slate-800 rounded-lg text-[11px] font-mono text-slate-300 max-h-36 overflow-y-auto">
-                          {JSON.stringify(sampleData, null, 2)}
-                        </pre>
+                      <div className="p-4 bg-slate-900/40 rounded-xl border border-slate-800 space-y-2">
+                        <p className="text-xs text-slate-300 font-medium">How this trigger works</p>
+                        <p className="text-[11px] text-slate-400 leading-relaxed">
+                          When you publish this Zap, Flowline will automatically start listening for the selected event. You don't need to configure anything else — just save and publish.
+                        </p>
                       </div>
                     </>
                   )}
