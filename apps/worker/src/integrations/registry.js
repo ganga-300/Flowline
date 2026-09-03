@@ -2,6 +2,10 @@ const executeGmailSendEmail = require("./gmail/sendEmail");
 const executeSlackSendMessage = require("./slack/sendMessage");
 const executeDiscordSendMessage = require("./discord/sendMessage");
 const executeGoogleSheetsAppendRow = require("./google_sheets/appendRow");
+const executeCapitalizeText = require("./formatter/capitalizeText");
+const executeFormatDate = require("./formatter/formatDate");
+const executeExtractRegex = require("./formatter/extractRegex");
+const executeCalculate = require("./math/calculate");
 
 /**
  * Worker Integration Registry
@@ -12,6 +16,10 @@ const integrationRegistry = {
   "slack:send_message": executeSlackSendMessage,
   "discord:send_message": executeDiscordSendMessage,
   "google_sheets:append_row": executeGoogleSheetsAppendRow,
+  "formatter:capitalize_text": executeCapitalizeText,
+  "formatter:format_date": executeFormatDate,
+  "formatter:extract_regex": executeExtractRegex,
+  "math:calculate": executeCalculate,
 };
 
 /**
