@@ -28,9 +28,16 @@ export function GitHubRepoSelector({ value, onChange, onSampleDataChange }) {
       const res = await authFetch(
         `http://localhost:4000/connections/github/repos?owner=${encodeURIComponent(queryOwner.trim())}`
       );
-      const data = await res.json();
+      const contentType = res.headers.get("content-type") || "";
+      let data = {};
+      if (contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        throw new Error(`Server returned ${res.status} (${res.statusText || "HTML"}). Please restart your server in apps/server (node src/index.js).`);
+      }
+
       if (!res.ok) {
-        throw new Error(data.error || "Failed to fetch repositories");
+        throw new Error(data.error || `Failed to fetch repositories (${res.status})`);
       }
       setRepos(data.repos || []);
       if ((data.repos || []).length === 0) {
@@ -50,11 +57,20 @@ export function GitHubRepoSelector({ value, onChange, onSampleDataChange }) {
     setError(null);
     try {
       const res = await authFetch(`http://localhost:4000/connections/github/repos`);
-      const data = await res.json();
+      const contentType = res.headers.get("content-type") || "";
+      let data = {};
+      if (contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        throw new Error(`Server returned ${res.status} (${res.statusText || "HTML"}). Please restart your server in apps/server (node src/index.js).`);
+      }
+
       setHasConnection(data.hasConnection !== false);
       if (data.hasConnection === false) {
         setError(data.message || "Please connect your GitHub account in Connections.");
         setRepos([]);
+      } else if (!res.ok) {
+        throw new Error(data.error || `Failed to fetch repositories (${res.status})`);
       } else {
         setRepos(data.repos || []);
       }
