@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const router = express.Router();
 const prisma = require("../prismaClient");
 const requireAuth = require("../middleware/auth");
+const { zapExecutionQueue } = require("../queue");
 
 // GET /zaps - list all Zaps, newest first
 router.get("/",requireAuth, async (req, res) => {
@@ -158,7 +159,36 @@ router.get("/:id/runs/:runId",requireAuth, async (req, res) => {
     res.json({ run });
   } catch (err) {
     console.error("Error fetching zap run trace:", err);
-    res.status(500).json({ error: "Failed to fetch run trace" });
+// POST /zaps/:id/run - trigger a manual instant run for a Zap
+router.post("/:id/run", requireAuth, async (req, res) => {
+  try {
+    const zap = await prisma.zap.findFirst({
+      where: { id: req.params.id, userId: req.userId },
+      include: { trigger: true, steps: true },
+    });
+
+    if (!zap) {
+      return res.status(404).json({ error: "Zap not found" });
+    }
+
+    const payload = req.body?.payload || { manual: true, triggeredAt: new Date().toISOString() };
+    const idempotencyKey = `${zap.id}-manual-${Date.now()}`;
+
+    const run = await prisma.zapRun.create({
+      data: {
+        zapId: zap.id,
+        status: "QUEUED",
+        idempotencyKey,
+        triggerPayload: payload,
+      },
+    });
+
+    await zapExecutionQueue.add("execute-zap-run", { zapRunId: run.id });
+
+    return res.status(202).json({ success: true, runId: run.id, message: "Zap triggered successfully" });
+  } catch (err) {
+    console.error("Error running zap:", err);
+    return res.status(500).json({ error: "Failed to run zap: " + err.message });
   }
 });
 

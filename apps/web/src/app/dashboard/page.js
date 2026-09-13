@@ -45,6 +45,34 @@ export default function DashboardPage() {
   const [zaps, setZaps] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [runningZapId, setRunningZapId] = useState(null);
+  const [runToast, setRunToast] = useState(null);
+
+  const handleRunZap = async (zap) => {
+    setRunningZapId(zap.id);
+    try {
+      const res = await authFetch(`http://localhost:4000/zaps/${zap.id}/run`, {
+        method: "POST",
+        body: JSON.stringify({
+          payload: {
+            triggeredBy: "user_click",
+            timestamp: new Date().toISOString(),
+          },
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setRunToast(`⚡ "${zap.zapName || zap.name || "Zap"}" triggered successfully! Actions are running.`);
+        setTimeout(() => setRunToast(null), 4000);
+      } else {
+        alert(data.error || "Failed to run zap");
+      }
+    } catch (err) {
+      alert(err.message || "Failed to trigger zap");
+    } finally {
+      setRunningZapId(null);
+    }
+  };
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -139,6 +167,22 @@ export default function DashboardPage() {
         </div>
       </header>
 
+      {/* Run Success Toast */}
+      {runToast && (
+        <div className="bg-[#c4f542]/10 border-b border-[#c4f542]/30 text-[#c4f542] px-6 py-3 text-sm flex items-center justify-between font-mono animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <span className="font-bold">✓ Success:</span>
+            <span>{runToast}</span>
+          </div>
+          <button
+            onClick={() => setRunToast(null)}
+            className="text-slate-400 hover:text-white"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* ── Main Content Container ── */}
       <main className="flex-1 max-w-5xl w-full mx-auto py-10 px-4 sm:px-6">
         
@@ -223,19 +267,44 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="pt-4 border-t border-slate-800/80 flex items-center justify-between">
-                  <Link
-                    href={`/zaps/${zap.id}/runs`}
-                    className="text-xs font-mono text-[#c4f542] hover:underline flex items-center gap-1.5"
-                  >
-                    <HistoryIcon className="w-3.5 h-3.5" />
-                    <span>Run History</span>
-                  </Link>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      disabled={runningZapId === zap.id}
+                      onClick={() => handleRunZap(zap)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-mono font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                        runningZapId === zap.id
+                          ? "bg-slate-700 text-slate-400 cursor-not-allowed"
+                          : "bg-[#c4f542]/15 text-[#c4f542] hover:bg-[#c4f542] hover:text-[#0d1117] border border-[#c4f542]/30"
+                      }`}
+                    >
+                      {runningZapId === zap.id ? (
+                        <>
+                          <span className="inline-block animate-spin">⏳</span>
+                          <span>Running...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>▶</span>
+                          <span>Run Now</span>
+                        </>
+                      )}
+                    </button>
+
+                    <Link
+                      href={`/zaps/${zap.id}/runs`}
+                      className="text-xs font-mono text-slate-400 hover:text-white flex items-center gap-1.5"
+                    >
+                      <HistoryIcon className="w-3.5 h-3.5" />
+                      <span>History</span>
+                    </Link>
+                  </div>
 
                   <Link
                     href={`/zaps/new`}
                     className="text-xs font-mono text-slate-400 hover:text-white"
                   >
-                    Edit Zap →
+                    Edit →
                   </Link>
                 </div>
               </div>
