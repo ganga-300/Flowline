@@ -41,8 +41,8 @@ export const triggerProviders = [
       {
         id: "new_issue",
         name: "New Issue Created",
-        type: "WEBHOOK",
-        description: "Triggers whenever a new issue is opened in your repository",
+        type: "POLLING",
+        description: "Periodically checks for newly opened issues in any public or private repository",
       },
       {
         id: "new_push",

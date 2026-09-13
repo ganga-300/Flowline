@@ -343,9 +343,9 @@ export default function NewZapBuilderPage() {
         status: "ENABLED",
         trigger: {
           type: trigger.type,
-          config: trigger.type === "POLLING" ? { url: trigger.config.url } : {},
+          config: trigger.config || {},
           ...(trigger.type === "POLLING" && {
-            pollIntervalSec: Number(trigger.pollIntervalSec) || 60,
+            pollIntervalSec: Number(trigger.pollIntervalSec) || 300,
           }),
         },
         steps: steps.map((s, idx) => {
@@ -823,6 +823,23 @@ export default function NewZapBuilderPage() {
                             const pId = e.target.value;
                             const p = triggerProviders.find((tp) => tp.id === pId) || triggerProviders[0];
                             const firstEvt = p.events[0];
+                            if (pId === "github") {
+                              setSampleData({
+                                issue: {
+                                  number: 101,
+                                  title: "New issue example",
+                                  body: "Issue details and bug description.",
+                                  html_url: "https://github.com/openfoodfacts/openfoodfacts-server/issues/101",
+                                  state: "open",
+                                  user: {
+                                    login: "contributor1",
+                                  },
+                                },
+                                repository: {
+                                  full_name: panelDraft.config?.repo || "openfoodfacts/openfoodfacts-server",
+                                },
+                              });
+                            }
                             setPanelDraft({
                               ...panelDraft,
                               type: firstEvt.type,
@@ -875,10 +892,45 @@ export default function NewZapBuilderPage() {
                         </select>
                       </div>
 
+                      {panelDraft.config?.provider === "github" && panelDraft.config?.event === "new_issue" && (
+                        <div>
+                          <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                            GitHub Repository
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. openfoodfacts/openfoodfacts-server"
+                            value={panelDraft.config?.repo || ""}
+                            onChange={(e) => {
+                              const newRepo = e.target.value.trim();
+                              setPanelDraft({
+                                ...panelDraft,
+                                config: {
+                                  ...panelDraft.config,
+                                  repo: newRepo,
+                                },
+                              });
+                              if (newRepo) {
+                                setSampleData((prev) => ({
+                                  ...prev,
+                                  repository: { full_name: newRepo },
+                                }));
+                              }
+                            }}
+                            className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:border-[#c4f542] focus:ring-1 focus:ring-[#c4f542] outline-none"
+                          />
+                          <p className="text-[11px] text-slate-500 mt-1">
+                            Enter any public or private repository (in <code>owner/repo</code> format). Flowline monitors for newly opened issues.
+                          </p>
+                        </div>
+                      )}
+
                       <div className="p-4 bg-slate-900/40 rounded-xl border border-slate-800 space-y-2">
                         <p className="text-xs text-slate-300 font-medium">How this trigger works</p>
                         <p className="text-[11px] text-slate-400 leading-relaxed">
-                          When you publish this Zap, Flowline will automatically start listening for the selected event. You don't need to configure anything else — just save and publish.
+                          {panelDraft.config?.provider === "github"
+                            ? "Flowline periodically polls this repository's issues. When a new issue is detected, your Zap automatically executes with the issue title, body, author, and URL."
+                            : "When you publish this Zap, Flowline will automatically start listening for the selected event. You don't need to configure anything else — just save and publish."}
                         </p>
                       </div>
                     </>
