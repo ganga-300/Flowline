@@ -56,11 +56,15 @@ async function runPollingCycle() {
 
         const res = await fetch(url, { headers });
         if (!res.ok) {
-          console.log(`[polling] GitHub fetch failed for ${cleanRepo} (trigger ${trigger.id}): ${res.status} ${res.statusText}`);
+          if (res.status === 403) {
+            console.warn(`[polling] GitHub API rate limit reached for ${cleanRepo}. Connect GitHub in Connections tab or set GITHUB_TOKEN for 5,000 req/hr.`);
+          } else {
+            console.log(`[polling] GitHub fetch failed for ${cleanRepo} (trigger ${trigger.id}): ${res.status} ${res.statusText}`);
+          }
           continue;
         }
 
-        const items = await res.json();
+        const items = await res.json().catch(() => null);
         if (!Array.isArray(items)) {
           console.log(`[polling] Unexpected GitHub API response for ${cleanRepo}`);
           continue;
