@@ -35,9 +35,22 @@ function evaluateCondition(context, condition) {
 
 // Resolves "{{path}}" placeholders inside a string against the context.
 // e.g. "Summarize: {{trigger.message}}" -> "Summarize: customer is angry..."
-function resolveTemplate(context, template) {
+function resolveTemplate(arg1, arg2) {
+  let context, template;
+  if (typeof arg1 === "string" || (typeof arg2 === "object" && arg2 !== null && typeof arg1 !== "object")) {
+    template = arg1;
+    context = arg2;
+  } else {
+    context = arg1;
+    template = arg2;
+  }
+
+  if (typeof template !== "string") {
+    return template != null ? String(template) : "";
+  }
+
   return template.replace(/\{\{(.+?)\}\}/g, (_, path) => {
-    const value = resolvePath(context, path.trim());
+    const value = resolvePath(context || {}, path.trim());
     return value === undefined ? "" : String(value);
   });
 }

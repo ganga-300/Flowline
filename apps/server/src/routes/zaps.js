@@ -159,6 +159,9 @@ router.get("/:id/runs/:runId",requireAuth, async (req, res) => {
     res.json({ run });
   } catch (err) {
     console.error("Error fetching zap run trace:", err);
+    res.status(500).json({ error: "Failed to fetch run trace" });
+  }
+});
 // POST /zaps/:id/run - trigger a manual instant run for a Zap
 router.post("/:id/run", requireAuth, async (req, res) => {
   try {
