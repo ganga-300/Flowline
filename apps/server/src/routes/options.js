@@ -60,6 +60,26 @@ router.get("/:id/options", requireAuth, async (req, res) => {
       });
     }
 
+    if (type === "github_repos") {
+      const reposRes = await fetch("https://api.github.com/user/repos?per_page=30&sort=updated", {
+        headers: {
+          Authorization: `Bearer ${connection.accessToken}`,
+          "User-Agent": "Flowline-App",
+        },
+      });
+      const data = await reposRes.json().catch(() => []);
+      if (Array.isArray(data)) {
+        const options = data.map((r) => ({ label: r.full_name, value: r.full_name }));
+        return res.json({ options });
+      }
+      return res.json({
+        options: [
+          { label: "my-org/backend-api", value: "my-org/backend-api" },
+          { label: "my-org/frontend-web", value: "my-org/frontend-web" },
+        ],
+      });
+    }
+
     return res.json({
       options: [
         { label: "Option 1", value: "opt_1" },

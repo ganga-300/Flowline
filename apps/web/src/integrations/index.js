@@ -2,6 +2,7 @@ import { gmailIntegration } from "./gmail";
 import { slackIntegration } from "./slack";
 import { discordIntegration } from "./discord";
 import { googleSheetsIntegration } from "./google_sheets";
+import { githubIntegration } from "./github";
 import { formatterIntegration } from "./formatter";
 import { mathIntegration } from "./math";
 
@@ -11,8 +12,9 @@ import { mathIntegration } from "./math";
 export const integrations = {
   [gmailIntegration.id]: gmailIntegration,
   [slackIntegration.id]: slackIntegration,
-  [discordIntegration.id]: discordIntegration,
+  [githubIntegration.id]: githubIntegration,
   [googleSheetsIntegration.id]: googleSheetsIntegration,
+  [discordIntegration.id]: discordIntegration,
   [formatterIntegration.id]: formatterIntegration,
   [mathIntegration.id]: mathIntegration,
 };

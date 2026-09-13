@@ -1,19 +1,29 @@
+const prisma = require("../../prismaClient");
 const { resolveTemplate } = require("../../conditions");
 
 /**
  * Slack -> Send Message Executor
- * Sends a message via Slack incoming webhook or Bot OAuth token.
+ * Supports both connected OAuth accounts and custom Webhook URLs.
  */
 async function executeSlackSendMessage(step, context) {
+  const connectionId = step.connectionId || step.config?.connectionId;
   const config = step.config?.config || step.config || {};
   const webhookUrl = resolveTemplate(context, config.webhookUrl || "");
   const text = resolveTemplate(context, config.text || config.message || "");
   const channel = resolveTemplate(context, config.channel || "#general");
 
-  if (!webhookUrl && !config.token) {
-    throw new Error(`Slack step ${step.id} missing webhookUrl or OAuth token`);
+  let accessToken = config.token;
+
+  if (connectionId) {
+    const connection = await prisma.connection.findUnique({
+      where: { id: connectionId },
+    });
+    if (connection && connection.accessToken) {
+      accessToken = connection.accessToken;
+    }
   }
 
+  // 1. Direct Webhook execution if specified
   if (webhookUrl) {
     const res = await fetch(webhookUrl, {
       method: "POST",
@@ -29,12 +39,16 @@ async function executeSlackSendMessage(step, context) {
     return { output: { status: "SENT", text, channel } };
   }
 
-  // OAuth token post
+  // 2. OAuth API execution
+  if (!accessToken) {
+    throw new Error(`Slack step is missing connected account or OAuth token`);
+  }
+
   const res = await fetch("https://slack.com/api/chat.postMessage", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${config.token}`,
+      Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify({ channel, text }),
   });

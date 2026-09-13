@@ -3,9 +3,13 @@ const router = express.Router();
 const prisma = require("../../prismaClient");
 const requireAuth = require("../../middleware/auth");
 const gmailRouter = require("./gmail");
+const slackRouter = require("./slack");
+const githubRouter = require("./github");
 
-// Mount Gmail OAuth routes
+// Mount OAuth provider routers
 router.use("/gmail", gmailRouter);
+router.use("/slack", slackRouter);
+router.use("/github", githubRouter);
 
 /**
  * GET /connections
@@ -28,11 +32,11 @@ router.get("/", requireAuth, async (req, res) => {
     const connections = rawConnections.map((conn) => {
       const parts = conn.provider.split(":");
       const providerName = parts[0];
-      const email = parts[1] || "";
+      const detail = parts[1] || "";
       return {
         id: conn.id,
         provider: providerName,
-        email: email || `${providerName} Account (${conn.id.slice(-6)})`,
+        email: detail || `${providerName} Account (${conn.id.slice(-6)})`,
         createdAt: conn.createdAt,
       };
     });
