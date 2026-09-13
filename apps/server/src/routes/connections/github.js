@@ -127,4 +127,108 @@ router.get("/callback", async (req, res) => {
   }
 });
 
+/**
+ * GET /connections/github/repos
+ * Query options:
+ * - owner (optional): GitHub username or org name (e.g. 'openfoodfacts')
+ * - connectionId (optional): specific GitHub connection ID
+ */
+router.get("/repos", requireAuth, async (req, res) => {
+  const { connectionId, owner } = req.query;
+
+  let accessToken = null;
+  if (connectionId) {
+    const conn = await prisma.connection.findFirst({
+      where: { id: connectionId, userId: req.userId },
+    });
+    if (conn) accessToken = conn.accessToken;
+  } else {
+    const defaultConn = await prisma.connection.findFirst({
+      where: { userId: req.userId, provider: { startsWith: "github" } },
+      orderBy: { createdAt: "desc" },
+    });
+    if (defaultConn) accessToken = defaultConn.accessToken;
+  }
+
+  const headers = {
+    "User-Agent": "Flowline-App",
+    Accept: "application/vnd.github.v3+json",
+  };
+
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  } else if (process.env.GITHUB_TOKEN) {
+    headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  }
+
+  try {
+    if (owner && owner.trim()) {
+      const cleanOwner = encodeURIComponent(owner.trim());
+      let url = `https://api.github.com/orgs/${cleanOwner}/repos?per_page=100&sort=updated`;
+      let ghRes = await fetch(url, { headers });
+
+      if (!ghRes.ok) {
+        url = `https://api.github.com/users/${cleanOwner}/repos?per_page=100&sort=updated`;
+        ghRes = await fetch(url, { headers });
+      }
+
+      if (!ghRes.ok) {
+        return res.status(ghRes.status).json({
+          error: `Could not fetch repositories for "${owner}". ${ghRes.statusText}`,
+          repos: [],
+        });
+      }
+
+      const repos = await ghRes.json();
+      return res.json({
+        repos: Array.isArray(repos)
+          ? repos.map((r) => ({
+              full_name: r.full_name,
+              name: r.name,
+              description: r.description || "",
+              private: r.private || false,
+              stars: r.stargazers_count || 0,
+            }))
+          : [],
+      });
+    }
+
+    // No owner specified: fetch user's own repositories
+    if (!accessToken) {
+      return res.status(200).json({
+        hasConnection: false,
+        repos: [],
+        message: "No GitHub connection found. Connect your GitHub account to see your personal repos.",
+      });
+    }
+
+    const url = "https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member";
+    const ghRes = await fetch(url, { headers });
+
+    if (!ghRes.ok) {
+      return res.status(ghRes.status).json({
+        error: `Failed to fetch your repositories: ${ghRes.statusText}`,
+        repos: [],
+      });
+    }
+
+    const repos = await ghRes.json();
+    return res.json({
+      hasConnection: true,
+      repos: Array.isArray(repos)
+        ? repos.map((r) => ({
+            full_name: r.full_name,
+            name: r.name,
+            description: r.description || "",
+            private: r.private || false,
+            stars: r.stargazers_count || 0,
+          }))
+        : [],
+    });
+  } catch (err) {
+    console.error("[GitHub repos fetch error]:", err.message);
+    return res.status(500).json({ error: err.message, repos: [] });
+  }
+});
+
 module.exports = router;

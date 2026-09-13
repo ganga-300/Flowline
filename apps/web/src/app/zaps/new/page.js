@@ -8,6 +8,7 @@ import { useAuthProtection } from "@/lib/useAuthProtection";
 import { getIntegration, getIntegrationAction } from "@/integrations";
 import { ActionIntegrationSelector } from "@/integrations/ActionIntegrationSelector";
 import { triggerProviders } from "@/integrations/triggers";
+import { GitHubRepoSelector } from "@/integrations/GitHubRepoSelector";
 
 // ── Icons ────────────────────────────────────────────────────────────
 function ZapIcon({ className = "w-5 h-5" }) {
@@ -893,36 +894,24 @@ export default function NewZapBuilderPage() {
                       </div>
 
                       {panelDraft.config?.provider === "github" && panelDraft.config?.event === "new_issue" && (
-                        <div>
-                          <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                            GitHub Repository
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="e.g. openfoodfacts/openfoodfacts-server"
-                            value={panelDraft.config?.repo || ""}
-                            onChange={(e) => {
-                              const newRepo = e.target.value.trim();
-                              setPanelDraft({
-                                ...panelDraft,
-                                config: {
-                                  ...panelDraft.config,
-                                  repo: newRepo,
-                                },
-                              });
-                              if (newRepo) {
-                                setSampleData((prev) => ({
-                                  ...prev,
-                                  repository: { full_name: newRepo },
-                                }));
-                              }
-                            }}
-                            className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:border-[#c4f542] focus:ring-1 focus:ring-[#c4f542] outline-none"
-                          />
-                          <p className="text-[11px] text-slate-500 mt-1">
-                            Enter any public or private repository (in <code>owner/repo</code> format). Flowline monitors for newly opened issues.
-                          </p>
-                        </div>
+                        <GitHubRepoSelector
+                          value={panelDraft.config?.repo || ""}
+                          onChange={(newRepo) => {
+                            setPanelDraft({
+                              ...panelDraft,
+                              config: {
+                                ...panelDraft.config,
+                                repo: newRepo,
+                              },
+                            });
+                          }}
+                          onSampleDataChange={(newRepo) => {
+                            setSampleData((prev) => ({
+                              ...prev,
+                              repository: { full_name: newRepo },
+                            }));
+                          }}
+                        />
                       )}
 
                       <div className="p-4 bg-slate-900/40 rounded-xl border border-slate-800 space-y-2">
