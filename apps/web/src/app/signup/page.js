@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { API_BASE_URL } from "@/lib/api";
 
 function ZapIcon({ className = "w-6 h-6" }) {
   return (
@@ -25,7 +26,7 @@ export default function SignupPage() {
     setIsSubmitting(true);
 
     try {
-      const res = await fetch("http://localhost:4000/auth/signup", {
+      const res = await fetch(`${API_BASE_URL}/auth/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),

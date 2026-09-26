@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { authFetch } from "@/lib/api";
+import { authFetch, API_BASE_URL } from "@/lib/api";
 
 /**
  * Reusable Account Connection Selector Component
@@ -32,7 +32,7 @@ export function ConnectionSelector({
     async function loadConnections() {
       setIsLoading(true);
       try {
-        const res = await authFetch(`http://localhost:4000/connections?provider=${providerId}`);
+        const res = await authFetch(`/connections?provider=${providerId}`);
         if (res.ok && isMounted) {
           const data = await res.json();
           const list = data.connections || [];
@@ -67,7 +67,7 @@ export function ConnectionSelector({
       return;
     }
     // Navigate to OAuth start endpoint on Flowline server
-    window.location.href = `http://localhost:4000/connections/${providerId}/start?token=${encodeURIComponent(token)}`;
+    window.location.href = `${API_BASE_URL}/connections/${providerId}/start?token=${encodeURIComponent(token)}`;
   };
 
   return (

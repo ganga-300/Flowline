@@ -16,15 +16,15 @@ export function ActionFieldRenderer({ field, value, connectionId, sampleData = {
   const [loadingOptions, setLoadingOptions] = useState(false);
 
   useEffect(() => {
-    if (type === "dynamic_dropdown" && connectionId && optionsType) {
+    if ((type === "dynamic_dropdown" || dynamic) && connectionId && optionsType) {
       loadDynamicOptions();
     }
-  }, [type, connectionId, optionsType]);
+  }, [type, dynamic, connectionId, optionsType]);
 
   const loadDynamicOptions = async () => {
     try {
       setLoadingOptions(true);
-      const res = await authFetch(`http://localhost:4000/connections/${connectionId}/options?type=${optionsType}`);
+      const res = await authFetch(`/connections/${connectionId}/options?type=${optionsType}`);
       const data = await res.json();
       setDynamicOptions(data.options || []);
     } catch (err) {

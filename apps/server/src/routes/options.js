@@ -40,6 +40,46 @@ router.get("/:id/options", requireAuth, async (req, res) => {
       });
     }
 
+    if (type === "slack_users") {
+      const slackRes = await fetch("https://slack.com/api/users.list", {
+        headers: { Authorization: `Bearer ${connection.accessToken}` },
+      });
+      const data = await slackRes.json().catch(() => ({}));
+      if (data.ok && Array.isArray(data.members)) {
+        const options = data.members
+          .filter((m) => !m.deleted && !m.is_bot && m.id !== "USLACKBOT")
+          .map((m) => ({
+            label: `${m.real_name || m.name} (@${m.name})`,
+            value: m.id,
+          }));
+        return res.json({ options });
+      }
+      return res.json({
+        options: [
+          { label: "Jane Doe (@jane)", value: "U123456" },
+          { label: "Alex Smith (@alex)", value: "U654321" },
+        ],
+      });
+    }
+
+    if (type === "gmail_labels") {
+      const gmailRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/labels", {
+        headers: { Authorization: `Bearer ${connection.accessToken}` },
+      });
+      const data = await gmailRes.json().catch(() => ({}));
+      if (Array.isArray(data.labels)) {
+        const options = data.labels.map((l) => ({ label: l.name, value: l.id }));
+        return res.json({ options });
+      }
+      return res.json({
+        options: [
+          { label: "INBOX", value: "INBOX" },
+          { label: "IMPORTANT", value: "IMPORTANT" },
+          { label: "STARRED", value: "STARRED" },
+        ],
+      });
+    }
+
     if (type === "google_sheets" || type === "sheets") {
       const driveRes = await fetch(
         "https://www.googleapis.com/drive/v3/files?q=mimeType='application/vnd.google-apps.spreadsheet'&pageSize=20",

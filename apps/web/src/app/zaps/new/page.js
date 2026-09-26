@@ -401,7 +401,7 @@ export default function NewZapBuilderPage() {
         }),
       };
 
-      const res = await authFetch("http://localhost:4000/zaps", {
+      const res = await authFetch("/zaps", {
         method: "POST",
         body: JSON.stringify(payload),
       });
@@ -740,12 +740,8 @@ export default function NewZapBuilderPage() {
                             step: panelDraft,
                             sampleContext: { trigger: sampleData, steps: {} },
                           };
-                          const res = await fetch("http://localhost:4000/zaps/test-step", {
+                          const res = await authFetch("/zaps/test-step", {
                             method: "POST",
-                            headers: {
-                              "Content-Type": "application/json",
-                              Authorization: `Bearer ${token}`,
-                            },
                             body: JSON.stringify(stepPayload),
                           });
                           const data = await res.json();

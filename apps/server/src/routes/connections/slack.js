@@ -35,9 +35,15 @@ router.get("/start", authMiddleware, (req, res) => {
   const scopes = [
     "chat:write",
     "channels:read",
+    "channels:history",
     "groups:read",
+    "groups:history",
     "im:read",
+    "im:history",
     "mpim:read",
+    "mpim:history",
+    "users:read",
+    "users:read.email",
     "chat:write.public",
   ];
 

@@ -1,5 +1,9 @@
 const prisma = require("../../prismaClient");
 const { resolveTemplate } = require("../../conditions");
+const TokenBucket = require("../../rateLimiter");
+
+// Slack rate limiter: 5 messages burst capacity, 1 msg/sec refill rate
+const slackBucket = new TokenBucket(5, 1);
 
 /**
  * Slack -> Send Message Executor
@@ -22,6 +26,9 @@ async function executeSlackSendMessage(step, context) {
       accessToken = connection.accessToken;
     }
   }
+
+  // Apply rate limiter before outbound request
+  await slackBucket.consume();
 
   // 1. Direct Webhook execution if specified
   if (webhookUrl) {
@@ -55,6 +62,9 @@ async function executeSlackSendMessage(step, context) {
 
   const data = await res.json();
   if (!data.ok) {
+    if (data.error === "token_revoked" || data.error === "invalid_auth") {
+      throw new Error(`Slack authorization failed (${data.error}). Please reconnect Slack in the Connections tab.`);
+    }
     throw new Error(`Slack API error: ${data.error}`);
   }
 

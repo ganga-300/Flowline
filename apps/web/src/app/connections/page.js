@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { authFetch } from "@/lib/api";
+import { authFetch, API_BASE_URL } from "@/lib/api";
 import { useAuthProtection } from "@/lib/useAuthProtection";
 
 function ZapIcon({ className = "w-5 h-5" }) {
@@ -87,7 +87,7 @@ export default function ConnectionsPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const res = await authFetch("http://localhost:4000/connections");
+        const res = await authFetch("/connections");
         const data = await res.json().catch(() => ({}));
 
         if (!res.ok) {
@@ -111,7 +111,7 @@ export default function ConnectionsPage() {
       alert("Authentication token missing. Please log in first.");
       return;
     }
-    window.location.href = `http://localhost:4000/connections/${provider}/start?token=${encodeURIComponent(token)}`;
+    window.location.href = `${API_BASE_URL}/connections/${provider}/start?token=${encodeURIComponent(token)}`;
   };
 
   const handleLogout = () => {

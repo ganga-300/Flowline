@@ -51,7 +51,7 @@ export default function DashboardPage() {
   const handleRunZap = async (zap) => {
     setRunningZapId(zap.id);
     try {
-      const res = await authFetch(`http://localhost:4000/zaps/${zap.id}/run`, {
+      const res = await authFetch(`/zaps/${zap.id}/run`, {
         method: "POST",
         body: JSON.stringify({
           payload: {
@@ -81,7 +81,7 @@ export default function DashboardPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const res = await authFetch("http://localhost:4000/zaps");
+        const res = await authFetch("/zaps");
         const text = await res.text();
         let data = {};
         try {

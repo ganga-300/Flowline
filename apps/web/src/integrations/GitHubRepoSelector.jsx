@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { authFetch } from "@/lib/api";
+import { authFetch, API_BASE_URL } from "@/lib/api";
 
 export function GitHubRepoSelector({ value, onChange, onSampleDataChange }) {
   const [mode, setMode] = useState("org"); // "org" | "my_repos" | "manual"
@@ -26,7 +26,7 @@ export function GitHubRepoSelector({ value, onChange, onSampleDataChange }) {
     setError(null);
     try {
       const res = await authFetch(
-        `http://localhost:4000/connections/github/repos?owner=${encodeURIComponent(queryOwner.trim())}`
+        `/connections/github/repos?owner=${encodeURIComponent(queryOwner.trim())}`
       );
       const contentType = res.headers.get("content-type") || "";
       let data = {};
@@ -56,7 +56,7 @@ export function GitHubRepoSelector({ value, onChange, onSampleDataChange }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await authFetch(`http://localhost:4000/connections/github/repos`);
+      const res = await authFetch(`/connections/github/repos`);
       const contentType = res.headers.get("content-type") || "";
       let data = {};
       if (contentType.includes("application/json")) {
@@ -188,7 +188,7 @@ export function GitHubRepoSelector({ value, onChange, onSampleDataChange }) {
         <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-center justify-between text-xs text-amber-200">
           <span>No connected GitHub account found.</span>
           <a
-            href="http://localhost:4000/connections/github/start"
+            href={`${API_BASE_URL}/connections/github/start`}
             target="_blank"
             rel="noreferrer"
             className="px-2.5 py-1 bg-amber-500 text-black font-semibold rounded hover:bg-amber-400 transition"

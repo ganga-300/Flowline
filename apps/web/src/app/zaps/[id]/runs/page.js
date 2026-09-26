@@ -239,7 +239,7 @@ export default function ZapRunsPage({ params }) {
   useEffect(() => {
     async function fetchZap() {
       try {
-        const res = await authFetch(`http://localhost:4000/zaps/${zapId}`);
+        const res = await authFetch(`/zaps/${zapId}`);
         if (res.ok) {
           const data = await res.json();
           setZap(data.zap);
@@ -262,8 +262,8 @@ export default function ZapRunsPage({ params }) {
     try {
       const url =
         status && status !== "ALL"
-          ? `http://localhost:4000/zaps/${zapId}/runs?status=${status}`
-          : `http://localhost:4000/zaps/${zapId}/runs`;
+          ? `/zaps/${zapId}/runs?status=${status}`
+          : `/zaps/${zapId}/runs`;
 
       const res = await authFetch(url);
       const text = await res.text();
@@ -304,7 +304,7 @@ export default function ZapRunsPage({ params }) {
     if (!runDetails[runId]) {
       setLoadingDetails((prev) => ({ ...prev, [runId]: true }));
       try {
-        const res = await authFetch(`http://localhost:4000/zaps/${zapId}/runs/${runId}`);
+        const res = await authFetch(`/zaps/${zapId}/runs/${runId}`);
         if (res.ok) {
           const data = await res.json().catch(() => ({}));
           setRunDetails((prev) => ({ ...prev, [runId]: data.run }));

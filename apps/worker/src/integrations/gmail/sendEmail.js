@@ -1,5 +1,6 @@
 const prisma = require("../../prismaClient");
 const { resolveTemplate } = require("../../conditions");
+const { refreshGoogleAccessToken } = require("../google/refreshToken");
 
 /**
  * Encodes a string as URL-safe Base64 (without padding '=') as required by Gmail API
@@ -41,48 +42,6 @@ function buildMimeMessage({ to, cc, bcc, subject, body, from }) {
   messageParts.push("");
   messageParts.push(body);
   return messageParts.join("\r\n");
-}
-
-/**
- * Refreshes an expired Google OAuth access token using the stored refresh token
- * @param {string} connectionId
- * @param {string} refreshToken
- * @returns {Promise<string>} new accessToken
- */
-async function refreshAccessToken(connectionId, refreshToken) {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) {
-    throw new Error("Cannot refresh Gmail token: GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET is missing from environment");
-  }
-
-  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: refreshToken,
-      grant_type: "refresh_token",
-    }),
-  });
-
-  const tokenData = await tokenRes.json();
-
-  if (!tokenRes.ok || tokenData.error) {
-    throw new Error(`Gmail token refresh failed: ${tokenData.error_description || tokenData.error || tokenRes.status}`);
-  }
-
-  const newAccessToken = tokenData.access_token;
-
-  // Persist updated accessToken to database
-  await prisma.connection.update({
-    where: { id: connectionId },
-    data: { accessToken: newAccessToken },
-  });
-
-  return newAccessToken;
 }
 
 /**
@@ -144,7 +103,7 @@ async function executeGmailSendEmail(step, context) {
   // If access token expired (HTTP 401) and we have a refresh token, try refreshing
   if (res.status === 401 && connection.refreshToken) {
     console.log(`[worker] Gmail access token expired for connection ${connectionId}. Refreshing token...`);
-    accessToken = await refreshAccessToken(connectionId, connection.refreshToken);
+    accessToken = await refreshGoogleAccessToken(connectionId, connection.refreshToken);
 
     // Retry sending message with refreshed token
     res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {

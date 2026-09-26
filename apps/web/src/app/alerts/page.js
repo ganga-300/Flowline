@@ -18,7 +18,7 @@ export default function AlertsPage() {
   const loadAlerts = async () => {
     try {
       setLoading(true);
-      const res = await authFetch("http://localhost:4000/alerts");
+      const res = await authFetch("/alerts");
       const data = await res.json();
       setAlerts(data.alerts || []);
     } catch (err) {
@@ -30,7 +30,7 @@ export default function AlertsPage() {
 
   const handleDismiss = async (id) => {
     try {
-      await authFetch(`http://localhost:4000/alerts/${id}`, { method: "DELETE" });
+      await authFetch(`/alerts/${id}`, { method: "DELETE" });
       setAlerts(alerts.filter((a) => a.id !== id));
     } catch (err) {
       console.error("Failed to dismiss alert", err);

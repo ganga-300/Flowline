@@ -25,7 +25,7 @@ export function ActionFormRenderer({ providerId, actionId, connectionId, values 
   const fetchDependentFields = async (parentKey, parentValue) => {
     try {
       setLoadingDeps(true);
-      const url = `http://localhost:4000/connections/${connectionId}/dynamic-fields?provider=${providerId}&action=${actionId}&parentKey=${parentKey}&parentValue=${encodeURIComponent(parentValue)}`;
+      const url = `/connections/${connectionId}/dynamic-fields?provider=${providerId}&action=${actionId}&parentKey=${parentKey}&parentValue=${encodeURIComponent(parentValue)}`;
       const res = await authFetch(url);
       const data = await res.json();
       setDependentFields(data.fields || []);
