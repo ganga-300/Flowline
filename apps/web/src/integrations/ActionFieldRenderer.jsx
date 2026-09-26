@@ -10,7 +10,7 @@ import { authFetch } from "@/lib/api";
  * Supports text, textarea, dropdown, dynamic_dropdown, boolean_toggle, and array.
  */
 export function ActionFieldRenderer({ field, value, connectionId, sampleData = {}, steps = [], onChange }) {
-  const { key, label, type, required, placeholder, description, optionsType, options: staticOptions } = field;
+  const { key, label, type, dynamic, required, placeholder, description, optionsType, options: staticOptions } = field;
   const [showPicker, setShowPicker] = useState(false);
   const [dynamicOptions, setDynamicOptions] = useState([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
@@ -65,10 +65,11 @@ export function ActionFieldRenderer({ field, value, connectionId, sampleData = {
         <select
           value={value || ""}
           onChange={(e) => onChange(key, e.target.value)}
-          className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3.5 py-2.5 text-xs text-white font-mono focus:border-[#c4f542] outline-none"
+          disabled={dynamic && loadingOptions}
+          className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3.5 py-2.5 text-xs text-white font-mono focus:border-[#c4f542] outline-none disabled:opacity-50"
         >
-          <option value="">Select an option...</option>
-          {(staticOptions || []).map((opt) => (
+          <option value="">{dynamic && loadingOptions ? "Loading Choices..." : "Select an option..."}</option>
+          {(dynamic && dynamicOptions.length > 0 ? dynamicOptions : staticOptions || []).map((opt) => (
             <option key={opt.value || opt} value={opt.value || opt}>
               {opt.label || opt}
             </option>
@@ -85,9 +86,9 @@ export function ActionFieldRenderer({ field, value, connectionId, sampleData = {
             <option value="">
               {loadingOptions ? "Loading Choices..." : "Select from choice list..."}
             </option>
-            {dynamicOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
+            {(dynamicOptions.length > 0 ? dynamicOptions : staticOptions || []).map((opt) => (
+              <option key={opt.value || opt} value={opt.value || opt}>
+                {opt.label || opt}
               </option>
             ))}
           </select>
