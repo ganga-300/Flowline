@@ -9,6 +9,7 @@ import { getIntegration, getIntegrationAction } from "@/integrations";
 import { ActionIntegrationSelector } from "@/integrations/ActionIntegrationSelector";
 import { triggerProviders } from "@/integrations/triggers";
 import { GitHubRepoSelector } from "@/integrations/GitHubRepoSelector";
+import { ConnectionSelector } from "@/integrations/ConnectionSelector";
 
 // ── Icons ────────────────────────────────────────────────────────────
 function ZapIcon({ className = "w-5 h-5" }) {
@@ -347,6 +348,9 @@ export default function NewZapBuilderPage() {
           config: trigger.config || {},
           ...(trigger.type === "POLLING" && {
             pollIntervalSec: Number(trigger.pollIntervalSec) || 300,
+          }),
+          ...((trigger.connectionId || trigger.config?.connectionId) && {
+            connectionId: trigger.connectionId || trigger.config?.connectionId,
           }),
         },
         steps: steps.map((s, idx) => {
@@ -889,32 +893,127 @@ export default function NewZapBuilderPage() {
                         </select>
                       </div>
 
-                      {panelDraft.config?.provider === "github" && panelDraft.config?.event === "new_issue" && (
-                        <GitHubRepoSelector
-                          value={panelDraft.config?.repo || ""}
-                          onChange={(newRepo) => {
-                            setPanelDraft({
-                              ...panelDraft,
-                              config: {
-                                ...panelDraft.config,
-                                repo: newRepo,
-                              },
-                            });
-                          }}
-                          onSampleDataChange={(newRepo) => {
-                            setSampleData((prev) => ({
-                              ...prev,
-                              repository: { full_name: newRepo },
-                            }));
-                          }}
-                        />
+                      {/* GitHub Trigger Config */}
+                      {panelDraft.config?.provider === "github" && (
+                        <div className="space-y-3">
+                          <GitHubRepoSelector
+                            value={panelDraft.config?.repo || ""}
+                            onChange={(newRepo) => {
+                              setPanelDraft({
+                                ...panelDraft,
+                                config: {
+                                  ...panelDraft.config,
+                                  repo: newRepo,
+                                },
+                              });
+                            }}
+                            onSampleDataChange={(newRepo) => {
+                              setSampleData((prev) => ({
+                                ...prev,
+                                repository: { full_name: newRepo },
+                              }));
+                            }}
+                          />
+                        </div>
+                      )}
+
+                      {/* Gmail Trigger Config */}
+                      {panelDraft.config?.provider === "gmail" && (
+                        <div className="space-y-3">
+                          <ConnectionSelector
+                            providerId="gmail"
+                            providerName="Gmail"
+                            connectionId={panelDraft.config?.connectionId || panelDraft.connectionId}
+                            onChange={(connId) => {
+                              setPanelDraft({
+                                ...panelDraft,
+                                connectionId: connId,
+                                config: {
+                                  ...panelDraft.config,
+                                  connectionId: connId,
+                                },
+                              });
+                            }}
+                          />
+                          <div>
+                            <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                              Search Query / Filter (Optional)
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g. is:unread from:boss@company.com"
+                              value={panelDraft.config?.query || ""}
+                              onChange={(e) =>
+                                setPanelDraft({
+                                  ...panelDraft,
+                                  config: {
+                                    ...panelDraft.config,
+                                    query: e.target.value,
+                                  },
+                                })
+                              }
+                              className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:border-[#c4f542] outline-none font-mono text-xs"
+                            />
+                            <p className="text-[11px] text-slate-500 mt-1">
+                              Leave empty to trigger on all unread emails, or provide a Gmail query filter.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Slack Trigger Config */}
+                      {panelDraft.config?.provider === "slack" && (
+                        <div className="space-y-3">
+                          <ConnectionSelector
+                            providerId="slack"
+                            providerName="Slack"
+                            connectionId={panelDraft.config?.connectionId || panelDraft.connectionId}
+                            onChange={(connId) => {
+                              setPanelDraft({
+                                ...panelDraft,
+                                connectionId: connId,
+                                config: {
+                                  ...panelDraft.config,
+                                  connectionId: connId,
+                                },
+                              });
+                            }}
+                          />
+                          <div>
+                            <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                              Channel Name or ID
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g. #general or C01234567"
+                              value={panelDraft.config?.channel || ""}
+                              onChange={(e) =>
+                                setPanelDraft({
+                                  ...panelDraft,
+                                  config: {
+                                    ...panelDraft.config,
+                                    channel: e.target.value,
+                                  },
+                                })
+                              }
+                              className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:border-[#c4f542] outline-none font-mono text-xs"
+                            />
+                            <p className="text-[11px] text-slate-500 mt-1">
+                              Channel name (e.g. #general) or channel ID to listen for new messages.
+                            </p>
+                          </div>
+                        </div>
                       )}
 
                       <div className="p-4 bg-slate-900/40 rounded-xl border border-slate-800 space-y-2">
                         <p className="text-xs text-slate-300 font-medium">How this trigger works</p>
                         <p className="text-[11px] text-slate-400 leading-relaxed">
                           {panelDraft.config?.provider === "github"
-                            ? "Flowline periodically polls this repository's issues. When a new issue is detected, your Zap automatically executes with the issue title, body, author, and URL."
+                            ? "Flowline periodically polls this repository. When new events (issues or commits) are detected, your Zap automatically executes."
+                            : panelDraft.config?.provider === "gmail"
+                            ? "Flowline periodically polls your connected Gmail account. When a new matching email arrives, your Zap triggers with email sender, subject, and body content."
+                            : panelDraft.config?.provider === "slack"
+                            ? "Flowline periodically polls your selected Slack channel. When a new message is posted, your Zap automatically triggers with the message text, user, and channel."
                             : "When you publish this Zap, Flowline will automatically start listening for the selected event. You don't need to configure anything else — just save and publish."}
                         </p>
                       </div>

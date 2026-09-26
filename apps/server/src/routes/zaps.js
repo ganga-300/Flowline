@@ -59,6 +59,9 @@ router.post("/",requireAuth, async (req, res) => {
           config: trigger.config || {},
           pollIntervalSec: trigger.pollIntervalSec,
           ...(webhookToken && { webhookToken }),
+          ...((trigger.connectionId || trigger.config?.connectionId) && {
+            connectionId: trigger.connectionId || trigger.config?.connectionId,
+          }),
         },
       },
       ...(Array.isArray(steps) && steps.length > 0 && {
