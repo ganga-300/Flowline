@@ -4,11 +4,35 @@
 // is missing along the way, instead of throwing - a missing field should
 // fail the condition cleanly, not crash the whole run.
 function resolvePath(context, path) {
+  if (!context || !path) return undefined;
+
   const segments = path.split(".");
-  return segments.reduce((current, segment) => {
-    if (current == null) return undefined;
-    return current[segment];
-  }, context);
+  let current = context;
+  let found = true;
+  for (const segment of segments) {
+    if (current == null || current[segment] === undefined) {
+      found = false;
+      break;
+    }
+    current = current[segment];
+  }
+  if (found && current !== undefined) return current;
+
+  // Fallbacks if path omitted "trigger." prefix
+  if (context.trigger && typeof context.trigger === "object") {
+    const fromTrigger = resolvePath(context.trigger, path);
+    if (fromTrigger !== undefined) return fromTrigger;
+
+    // Check inside common trigger payload namespaces (issue, body, email, message, repository, commit)
+    for (const subKey of ["issue", "body", "email", "message", "repository", "commit"]) {
+      if (context.trigger[subKey] && typeof context.trigger[subKey] === "object") {
+        const fromSub = resolvePath(context.trigger[subKey], path);
+        if (fromSub !== undefined) return fromSub;
+      }
+    }
+  }
+
+  return undefined;
 }
 
 // Evaluates a single condition object against the run context.
