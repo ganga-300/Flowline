@@ -74,6 +74,47 @@ export default function DashboardPage() {
     }
   };
 
+  const handleToggleStatus = async (zap) => {
+    const nextStatus = zap.status === "ENABLED" ? "DISABLED" : "ENABLED";
+    try {
+      const res = await authFetch(`/zaps/${zap.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      if (res.ok) {
+        setZaps((prev) =>
+          prev.map((z) => (z.id === zap.id ? { ...z, status: nextStatus } : z))
+        );
+        setRunToast(`Zap ${nextStatus === "ENABLED" ? "activated" : "paused"}`);
+        setTimeout(() => setRunToast(null), 3000);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Failed to update Zap status");
+      }
+    } catch (err) {
+      alert(err.message || "Failed to update Zap status");
+    }
+  };
+
+  const handleDeleteZap = async (zap) => {
+    if (!window.confirm(`Delete "${zap.zapName || zap.name || "this Zap"}"? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      const res = await authFetch(`/zaps/${zap.id}`, { method: "DELETE" });
+      if (res.ok) {
+        setZaps((prev) => prev.filter((z) => z.id !== zap.id));
+        setRunToast(`Zap deleted successfully`);
+        setTimeout(() => setRunToast(null), 3000);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Failed to delete Zap");
+      }
+    } catch (err) {
+      alert(err.message || "Failed to delete Zap");
+    }
+  };
+
   useEffect(() => {
     if (!isAuthenticated) return;
 
@@ -253,9 +294,19 @@ export default function DashboardPage() {
                       </span>
                     </div>
 
-                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-[#c4f542]/10 border border-[#c4f542]/30 text-[#c4f542]">
-                      {zap.status || "ENABLED"}
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleStatus(zap)}
+                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                        zap.status === "ENABLED"
+                          ? "bg-emerald-950/60 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-900/60"
+                          : "bg-slate-800 border border-slate-700 text-slate-400 hover:text-slate-200"
+                      }`}
+                      title={zap.status === "ENABLED" ? "Click to pause this Zap" : "Click to activate this Zap"}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${zap.status === "ENABLED" ? "bg-emerald-400 animate-pulse" : "bg-slate-500"}`} />
+                      <span>{zap.status === "ENABLED" ? "Active" : "Paused"}</span>
+                    </button>
                   </div>
 
                   <h3 className="text-base font-semibold text-white mb-4 group-hover:text-[#c4f542] transition-colors">
@@ -297,12 +348,14 @@ export default function DashboardPage() {
                     </Link>
                   </div>
 
-                  <Link
-                    href={`/zaps/new`}
-                    className="text-xs font-mono text-slate-400 hover:text-white"
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteZap(zap)}
+                    className="text-xs font-mono text-slate-500 hover:text-red-400 transition-colors p-1 cursor-pointer"
+                    title="Delete this Zap"
                   >
-                    Edit →
-                  </Link>
+                    Delete
+                  </button>
                 </div>
               </div>
             ))}

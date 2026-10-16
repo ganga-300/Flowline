@@ -89,36 +89,74 @@ router.post("/",requireAuth, async (req, res) => {
 });
 
 // PATCH /zaps/:id - update name and/or status
-router.patch("/:id",requireAuth, async (req, res) => {
-  const { name, status } = req.body;
+router.patch("/:id", requireAuth, async (req, res) => {
+  try {
+    const { name, status } = req.body;
 
-  if (status && !["ENABLED", "DISABLED"].includes(status)) {
-    return res.status(400).json({ error: "Invalid status. Must be ENABLED or DISABLED" });
-  }
+    if (status && !["ENABLED", "DISABLED"].includes(status)) {
+      return res.status(400).json({ error: "Invalid status. Must be ENABLED or DISABLED" });
+    }
 
-  const existingZap = await prisma.zap.findUnique({
-    where: { id: req.params.id },
-  });
+    const existingZap = await prisma.zap.findUnique({
+      where: { id: req.params.id },
+    });
 
-  if (!existingZap) {
-    return res.status(404).json({ error: "Zap not found" });
-  }
+    if (!existingZap) {
+      return res.status(404).json({ error: "Zap not found" });
+    }
 
-  const zap = await prisma.zap.update({
-    where: { id: req.params.id },
-    data: {
-      ...(name !== undefined && { zapName: name }),
-      ...(status !== undefined && { status }),
-    },
-    include: {
-      trigger: true,
-      steps: {
-        orderBy: { order: "asc" },
+    if (existingZap.userId !== req.userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    const zap = await prisma.zap.update({
+      where: { id: req.params.id },
+      data: {
+        ...(name !== undefined && { zapName: name }),
+        ...(status !== undefined && { status }),
       },
-    },
-  });
+      include: {
+        trigger: true,
+        steps: {
+          orderBy: { order: "asc" },
+        },
+      },
+    });
 
-  res.json({ zap });
+    res.json({ zap });
+  } catch (err) {
+    console.error("Error updating zap:", err);
+    res.status(500).json({ error: "Failed to update zap" });
+  }
+});
+
+// DELETE /zaps/:id - delete a zap and all related runs, steps, and triggers
+router.delete("/:id", requireAuth, async (req, res) => {
+  try {
+    const existingZap = await prisma.zap.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!existingZap) {
+      return res.status(404).json({ error: "Zap not found" });
+    }
+
+    if (existingZap.userId !== req.userId) {
+      return res.status(403).json({ error: "Unauthorized to delete this zap" });
+    }
+
+    await prisma.$transaction([
+      prisma.zapRun.deleteMany({ where: { zapId: req.params.id } }),
+      prisma.step.deleteMany({ where: { zapId: req.params.id } }),
+      prisma.trigger.deleteMany({ where: { zapId: req.params.id } }),
+      prisma.zap.delete({ where: { id: req.params.id } }),
+    ]);
+
+    return res.json({ success: true, message: "Zap deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting zap:", err);
+    return res.status(500).json({ error: "Failed to delete zap" });
+  }
 });
 
 // GET /zaps/:id/runs?status=FAILED - execution history list

@@ -399,21 +399,47 @@ export default function NewZapBuilderPage() {
     setIsPublishing(true);
 
     try {
+      // Auto-commit active drawer draft if open
+      let currentTrigger = trigger;
+      let currentSteps = steps;
+      if (panelDraft) {
+        if (activePanel?.target === "trigger") {
+          currentTrigger = { ...panelDraft, isConfigured: true };
+          setTrigger(currentTrigger);
+        } else if (activePanel?.target === "step") {
+          currentSteps = steps.map((s) =>
+            s.id === activePanel.stepId ? { ...panelDraft, isConfigured: true } : s
+          );
+          setSteps(currentSteps);
+        }
+      }
+
+      // Pre-publish validation guards
+      if (currentTrigger.config?.provider === "github" && !currentTrigger.config?.repo) {
+        throw new Error("Please select a GitHub repository in the trigger step.");
+      }
+      for (let i = 0; i < currentSteps.length; i++) {
+        const s = currentSteps[i];
+        if (s.type === "ACTION" && !s.config?.provider && !s.config?.url) {
+          throw new Error(`Step ${i + 1} is incomplete. Please select an app to continue.`);
+        }
+      }
+
       // Build request body according to backend requirements
       const payload = {
         name: zapName.trim() || "Untitled Zap",
         status: "ENABLED",
         trigger: {
-          type: trigger.type,
-          config: trigger.config || {},
-          ...(trigger.type === "POLLING" && {
-            pollIntervalSec: Number(trigger.pollIntervalSec) || 300,
+          type: currentTrigger.type,
+          config: currentTrigger.config || {},
+          ...(currentTrigger.type === "POLLING" && {
+            pollIntervalSec: Number(currentTrigger.pollIntervalSec) || 300,
           }),
-          ...((trigger.connectionId || trigger.config?.connectionId) && {
-            connectionId: trigger.connectionId || trigger.config?.connectionId,
+          ...((currentTrigger.connectionId || currentTrigger.config?.connectionId) && {
+            connectionId: currentTrigger.connectionId || currentTrigger.config?.connectionId,
           }),
         },
-        steps: steps.map((s, idx) => {
+        steps: currentSteps.map((s, idx) => {
           let stepConfig = {};
           if (s.type === "ACTION") {
             if (s.config?.provider) {
