@@ -36,6 +36,7 @@ export function ActionFormRenderer({ providerId, actionId, connectionId, values 
         <ActionFieldRenderer
           key={field.key}
           field={field}
+          providerId={providerId}
           value={values[field.key]}
           connectionId={connectionId}
           sampleData={sampleData}

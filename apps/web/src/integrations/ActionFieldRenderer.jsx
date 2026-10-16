@@ -5,30 +5,41 @@ import { PillInput } from "./PillInput";
 import { VariablePickerModal } from "./VariablePickerModal";
 import { authFetch } from "@/lib/api";
 
+function getTriggerType(sampleData) {
+  if (sampleData?.issue || sampleData?.body?.number || sampleData?.body?.repo || sampleData?.body?.user_login) {
+    return "github";
+  }
+  if (sampleData?.email || sampleData?.body?.from || sampleData?.body?.date) {
+    return "gmail";
+  }
+  if (sampleData?.message || sampleData?.body?.ts) {
+    return "slack";
+  }
+  return "generic";
+}
+
 // ── Helper to generate a pre-formatted default message based on the trigger ──
 function getSmartTemplate(sampleData, fieldKey) {
-  const isGithub = !!(sampleData?.issue || sampleData?.body?.number || sampleData?.body?.title);
-  const isGmail = !!(sampleData?.email || sampleData?.body?.from || sampleData?.body?.subject);
-  const isSlack = !!(sampleData?.message || sampleData?.body?.channel || sampleData?.body?.text);
+  const triggerType = getTriggerType(sampleData);
 
   if (fieldKey === "subject") {
-    if (isGithub) return "🚨 New GitHub Issue: {{issue.title}}";
-    if (isGmail) return "Fwd: {{email.subject}}";
-    if (isSlack) return "New Slack Notification from {{message.user}}";
+    if (triggerType === "github") return "🚨 New GitHub Issue: {{issue.title}}";
+    if (triggerType === "gmail") return "Fwd: {{email.subject}}";
+    if (triggerType === "slack") return "New Slack Notification from {{message.user}}";
     return "New Flowline Notification";
   }
 
   if (fieldKey === "text" || fieldKey === "body" || fieldKey === "message") {
-    if (isGithub) {
+    if (triggerType === "github") {
       return "🚨 New GitHub Issue #{{issue.number}}: {{issue.title}}\n\nAuthor: {{issue.user_login}}\nView issue: {{issue.html_url}}";
     }
-    if (isGmail) {
+    if (triggerType === "gmail") {
       return "📩 New Email Received\nFrom: {{email.from}}\nSubject: {{email.subject}}\n\n{{email.body}}";
     }
-    if (isSlack) {
+    if (triggerType === "slack") {
       return "💬 New Slack message in {{message.channel}} by {{message.user}}:\n{{message.text}}";
     }
-    return "Notification: {{message}}";
+    return "Notification received:\n{{message}}";
   }
 
   return "";
@@ -36,11 +47,9 @@ function getSmartTemplate(sampleData, fieldKey) {
 
 // ── Helper to extract 1-click variable chips from the active trigger ──
 function getQuickChips(sampleData) {
-  const isGithub = !!(sampleData?.issue || sampleData?.body?.number || sampleData?.body?.title);
-  const isGmail = !!(sampleData?.email || sampleData?.body?.from || sampleData?.body?.subject);
-  const isSlack = !!(sampleData?.message || sampleData?.body?.channel || sampleData?.body?.text);
+  const triggerType = getTriggerType(sampleData);
 
-  if (isGithub) {
+  if (triggerType === "github") {
     return [
       { label: "Issue Title", token: "{{issue.title}}" },
       { label: "Issue URL", token: "{{issue.html_url}}" },
@@ -49,7 +58,7 @@ function getQuickChips(sampleData) {
       { label: "Repository", token: "{{repository.full_name}}" },
     ];
   }
-  if (isGmail) {
+  if (triggerType === "gmail") {
     return [
       { label: "Subject", token: "{{email.subject}}" },
       { label: "Sender", token: "{{email.from}}" },
@@ -57,7 +66,7 @@ function getQuickChips(sampleData) {
       { label: "Date", token: "{{email.date}}" },
     ];
   }
-  if (isSlack) {
+  if (triggerType === "slack") {
     return [
       { label: "Message Text", token: "{{message.text}}" },
       { label: "User", token: "{{message.user}}" },
@@ -79,18 +88,20 @@ function getQuickChips(sampleData) {
  * Generic Field Renderer for Integration Action & Trigger Form Fields
  * Supports text, textarea, dropdown, dynamic_dropdown, boolean_toggle, and array.
  */
-export function ActionFieldRenderer({ field, value, connectionId, sampleData = {}, steps = [], onChange }) {
+export function ActionFieldRenderer({ field, providerId, value, connectionId, sampleData = {}, steps = [], onChange }) {
   const { key, label, type, dynamic, required, placeholder, description, optionsType, options: staticOptions } = field;
   const [showPicker, setShowPicker] = useState(false);
   const [dynamicOptions, setDynamicOptions] = useState([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
 
+  // Default templates are ONLY for messaging actions (Slack and Gmail)
+  const isMessagingAction = providerId === "slack" || providerId === "gmail";
   const isTemplatableField =
     (type === "text" || type === "textarea" || type === "pill_input") &&
     (key === "text" || key === "body" || key === "message" || key === "subject");
 
   const quickChips = isTemplatableField ? getQuickChips(sampleData) : [];
-  const suggestedTemplate = isTemplatableField ? getSmartTemplate(sampleData, key) : "";
+  const suggestedTemplate = (isMessagingAction && isTemplatableField) ? getSmartTemplate(sampleData, key) : "";
 
   useEffect(() => {
     if ((type === "dynamic_dropdown" || dynamic) && connectionId && optionsType) {
