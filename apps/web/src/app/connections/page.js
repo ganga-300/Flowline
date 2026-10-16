@@ -114,6 +114,20 @@ export default function ConnectionsPage() {
     window.location.href = `${API_BASE_URL}/connections/${provider}/start?token=${encodeURIComponent(token)}`;
   };
 
+  const handleDisconnect = async (connId, providerName) => {
+    if (!window.confirm(`Disconnect this ${providerName} account? Any Zaps using it will stop working.`)) return;
+    try {
+      const res = await authFetch(`/connections/${connId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to disconnect");
+      }
+      setConnections((prev) => prev.filter((c) => c.id !== connId));
+    } catch (err) {
+      alert(err.message || "Failed to disconnect account.");
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("flowline_token");
     router.push("/login");
@@ -296,8 +310,14 @@ export default function ConnectionsPage() {
                   </div>
                 </div>
 
-                <div className="text-right font-mono text-xs text-slate-500">
-                  <span>ID: {conn.id}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-mono text-slate-500 hidden sm:inline">ID: {conn.id.slice(-8)}</span>
+                  <button
+                    onClick={() => handleDisconnect(conn.id, conn.provider)}
+                    className="px-3 py-1.5 text-xs font-mono font-semibold text-red-400 hover:text-white hover:bg-red-600/20 border border-red-800/50 hover:border-red-600 rounded-lg transition-all cursor-pointer"
+                  >
+                    Disconnect
+                  </button>
                 </div>
               </div>
             ))}
