@@ -470,49 +470,7 @@ async function runPollingCycle() {
         continue;
       }
 
-      // 4. Google Sheets Integration (new_row)
-      if (provider === "google_sheets" && trigger.connection) {
-        const spreadsheetId = trigger.config?.spreadsheetId;
-        const range = trigger.config?.range || "Sheet1!A1:Z";
-        const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
-        
-        const res = await fetch(url, {
-          headers: { Authorization: `Bearer ${trigger.connection.accessToken}` },
-        });
-        if (!res.ok) {
-          console.log(`[polling] Google Sheets poll failed for trigger ${trigger.id}: ${res.status}`);
-          continue;
-        }
-        const data = await res.json();
-        if (!data) continue;
 
-        const dataStr = JSON.stringify(data);
-        const hash = crypto.createHash("sha256").update(dataStr).digest("hex");
-
-        if (hash === trigger.lastPollHash) continue;
-
-        await prisma.trigger.update({
-          where: { id: trigger.id },
-          data: { lastPollHash: hash },
-        });
-
-        const idempotencyKey = `${trigger.id}-poll-${hash}`;
-        try {
-          const run = await prisma.zapRun.create({
-            data: {
-              zapId: trigger.zapId,
-              status: "QUEUED",
-              idempotencyKey,
-              triggerPayload: data,
-            },
-          });
-          await zapExecutionQueue.add("execute-zap-run", { zapRunId: run.id });
-          console.log(`[polling] Google Sheets: new data detected, queued run ${run.id}`);
-        } catch (err) {
-          if (err.code !== "P2002") throw err;
-        }
-        continue;
-      }
 
       // 5. Generic HTTP polling fallback
       const url = trigger.config?.url;

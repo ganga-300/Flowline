@@ -4,7 +4,7 @@ const prisma = require("../prismaClient");
 const requireAuth = require("../middleware/auth");
 
 /**
- * GET /connections/:id/options?type=slack_channels|google_sheets|gmail_labels
+ * GET /connections/:id/options?type=slack_channels|slack_users|gmail_labels|github_repos
  * Fetches dynamic option choices from third-party APIs for form dropdowns.
  */
 router.get("/:id/options", requireAuth, async (req, res) => {
@@ -76,26 +76,6 @@ router.get("/:id/options", requireAuth, async (req, res) => {
           { label: "INBOX", value: "INBOX" },
           { label: "IMPORTANT", value: "IMPORTANT" },
           { label: "STARRED", value: "STARRED" },
-        ],
-      });
-    }
-
-    if (type === "google_sheets" || type === "sheets") {
-      const driveRes = await fetch(
-        "https://www.googleapis.com/drive/v3/files?q=mimeType='application/vnd.google-apps.spreadsheet'&pageSize=20",
-        {
-          headers: { Authorization: `Bearer ${connection.accessToken}` },
-        }
-      );
-      const data = await driveRes.json().catch(() => ({}));
-      if (Array.isArray(data.files)) {
-        const options = data.files.map((f) => ({ label: f.name, value: f.id }));
-        return res.json({ options });
-      }
-      return res.json({
-        options: [
-          { label: "Leads Spreadsheet 2026", value: "1BxiMVs0XRn5nW..." },
-          { label: "Customer Support Queue", value: "1a2b3c4d5e6f..." },
         ],
       });
     }

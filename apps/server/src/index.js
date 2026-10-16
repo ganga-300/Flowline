@@ -8,39 +8,22 @@ const connectionsRouter = require("./routes/connections");
 const testStepRouter = require("./routes/testStep");
 const alertsRouter = require("./routes/alerts");
 const optionsRouter = require("./routes/options");
-const dynamicFieldsRouter = require("./routes/dynamicFields");
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-
-
 app.use("/auth", authRouter);
 app.use("/webhooks", webhooksRouter);
 app.use("/zaps/test-step", testStepRouter);
 app.use("/zaps", zapsRouter);
-app.use("/connections", dynamicFieldsRouter);
 app.use("/connections", optionsRouter);
 app.use("/connections", connectionsRouter);
 app.use("/alerts", alertsRouter);
 
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 
-app.get("/", (req, res) => {
-  res.send("Hello World!");
+app.listen(4000, () => {
+  console.log("Server is running on port 4000");
 });
-
-
-app.post("/test-echo", (req, res) => {
-  console.log("Test echo received:", req.body);
-  res.json({ received: req.body, timestamp: new Date().toISOString() });
-});
-
-
-
-
-app.listen(4000,()=>{
-    console.log("Server is running on port 4000");
-})

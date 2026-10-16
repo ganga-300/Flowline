@@ -1,8 +1,6 @@
 const executeGmailSendEmail = require("./gmail/sendEmail");
 const executeSlackSendMessage = require("./slack/sendMessage");
 const executeSlackSendDm = require("./slack/sendDm");
-const executeDiscordSendMessage = require("./discord/sendMessage");
-const executeGoogleSheetsAppendRow = require("./google_sheets/appendRow");
 const executeGitHubCreateIssue = require("./github/createIssue");
 const executeGitHubAddComment = require("./github/addComment");
 const executeCapitalizeText = require("./formatter/capitalizeText");
@@ -13,13 +11,12 @@ const executeCalculate = require("./math/calculate");
 /**
  * Worker Integration Registry
  * Maps `${provider}:${action}` keys to execution handler functions.
+ * Focused strictly on Gmail, Slack, and GitHub.
  */
 const integrationRegistry = {
   "gmail:send_email": executeGmailSendEmail,
   "slack:send_message": executeSlackSendMessage,
   "slack:send_dm": executeSlackSendDm,
-  "discord:send_message": executeDiscordSendMessage,
-  "google_sheets:append_row": executeGoogleSheetsAppendRow,
   "github:create_issue": executeGitHubCreateIssue,
   "github:add_comment": executeGitHubAddComment,
   "formatter:capitalize_text": executeCapitalizeText,

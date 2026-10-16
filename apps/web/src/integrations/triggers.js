@@ -1,6 +1,6 @@
 /**
  * App-Centric Trigger Definitions Registry
- * Maps integrations to user-friendly "When this happens..." trigger events.
+ * Maps core integrations (Webhooks, Gmail, Slack, GitHub) to trigger events.
  */
 
 export const triggerProviders = [
@@ -63,20 +63,6 @@ export const triggerProviders = [
         name: "New Code Push",
         type: "POLLING",
         description: "Periodically checks for newly pushed commits to a repository",
-      },
-    ],
-  },
-  {
-    id: "google_sheets",
-    name: "Google Sheets",
-    icon: "sheets",
-    description: "Listen for new rows or spreadsheet updates in Google Sheets",
-    events: [
-      {
-        id: "new_row",
-        name: "New Spreadsheet Row",
-        type: "POLLING",
-        description: "Triggers when a new row is appended to a selected worksheet",
       },
     ],
   },
