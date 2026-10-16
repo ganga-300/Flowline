@@ -252,14 +252,6 @@ export default function NewZapBuilderPage() {
         defaultStep.name = "Delay Execution";
         defaultStep.config = { seconds: 30 };
         break;
-      case "FORMATTER":
-        defaultStep.name = "Text/Math Formatter";
-        defaultStep.config = { category: "text", action: "capitalize", input: "" };
-        break;
-      case "LOOP":
-        defaultStep.name = "Loop Over Array";
-        defaultStep.config = { arrayPath: "trigger.body.items" };
-        break;
     }
 
     const updated = [...steps];
@@ -1373,31 +1365,6 @@ function ConnectorLine({ onAddStep, isOpenSelector, onCloseSelector, onSelectTyp
                 </div>
               </button>
 
-              <button
-                onClick={() => onSelectType("FORMATTER")}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 text-left transition-colors cursor-pointer group"
-              >
-                <div className="w-7 h-7 rounded bg-slate-800 border border-slate-700 flex items-center justify-center text-[#c4f542] group-hover:border-[#c4f542]">
-                  ⚡
-                </div>
-                <div>
-                  <div className="text-xs font-semibold text-white">Formatter</div>
-                  <div className="text-[10px] text-slate-400 font-mono">Text, Math, Date transform</div>
-                </div>
-              </button>
-
-              <button
-                onClick={() => onSelectType("LOOP")}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 text-left transition-colors cursor-pointer group"
-              >
-                <div className="w-7 h-7 rounded bg-slate-800 border border-slate-700 flex items-center justify-center text-[#c4f542] group-hover:border-[#c4f542]">
-                  🔄
-                </div>
-                <div>
-                  <div className="text-xs font-semibold text-white">Loop</div>
-                  <div className="text-[10px] text-slate-400 font-mono">Iterate over items</div>
-                </div>
-              </button>
             </div>
           </div>
         </>
