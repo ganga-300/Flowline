@@ -846,20 +846,44 @@ export default function NewZapBuilderPage() {
                             const pId = e.target.value;
                             const p = triggerProviders.find((tp) => tp.id === pId) || triggerProviders[0];
                             const firstEvt = p.events[0];
-                            if (pId === "github") {
+                            if (pId === "gmail") {
                               setSampleData({
-                                issue: {
+                                body: {
+                                  from: "sender@example.com",
+                                  to: "you@example.com",
+                                  subject: "Meeting Reminder",
+                                  body: "Don't forget our meeting at 3 PM.",
+                                  date: new Date().toISOString(),
+                                },
+                              });
+                            } else if (pId === "slack") {
+                              setSampleData({
+                                body: {
+                                  text: "Hello from Slack!",
+                                  user: "U012EXAMPLE",
+                                  channel: "#general",
+                                  ts: "1234567890.123456",
+                                },
+                              });
+                            } else if (pId === "github") {
+                              setSampleData({
+                                body: {
                                   number: 101,
                                   title: "New issue example",
                                   body: "Issue details and bug description.",
-                                  html_url: "https://github.com/openfoodfacts/openfoodfacts-server/issues/101",
+                                  html_url: "https://github.com/user/repo/issues/101",
                                   state: "open",
-                                  user: {
-                                    login: "contributor1",
-                                  },
+                                  user_login: "contributor1",
+                                  repo: panelDraft.config?.repo || "user/repo",
                                 },
-                                repository: {
-                                  full_name: panelDraft.config?.repo || "openfoodfacts/openfoodfacts-server",
+                              });
+                            } else {
+                              setSampleData({
+                                body: {
+                                  email: "user@example.com",
+                                  name: "Alex Smith",
+                                  subject: "New Registration",
+                                  message: "Hello from Flowline!",
                                 },
                               });
                             }
@@ -932,7 +956,7 @@ export default function NewZapBuilderPage() {
                             onSampleDataChange={(newRepo) => {
                               setSampleData((prev) => ({
                                 ...prev,
-                                repository: { full_name: newRepo },
+                                body: { ...prev.body, repo: newRepo },
                               }));
                             }}
                           />

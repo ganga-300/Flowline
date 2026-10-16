@@ -50,7 +50,7 @@ export function ActionFieldRenderer({ field, value, connectionId, sampleData = {
           {required && <span className="text-red-400 ml-1">*</span>}
         </label>
 
-        {(type === "text" || type === "textarea") && (
+        {(type === "text" || type === "textarea" || type === "pill_input") && (
           <button
             type="button"
             onClick={() => setShowPicker(!showPicker)}
