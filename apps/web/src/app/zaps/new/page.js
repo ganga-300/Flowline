@@ -1265,7 +1265,7 @@ export default function NewZapBuilderPage() {
             </div>
 
             {/* Drawer Footer Actions */}
-            {activePanel.tab === "setup" && (
+            {(
               <div className="p-6 border-t border-slate-800 bg-[#1c2333]/30 flex items-center justify-end gap-3">
                 <button
                   onClick={closePanel}
