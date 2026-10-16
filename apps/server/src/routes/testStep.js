@@ -163,4 +163,258 @@ router.get("/sample/:triggerId", requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * POST /zaps/test-step/fetch-sample
+ * Fetches real sample data directly from the provider (GitHub, Gmail, Slack)
+ * based on current trigger configuration in the builder.
+ */
+router.post("/fetch-sample", requireAuth, async (req, res) => {
+  const { provider, event, config = {}, connectionId } = req.body;
+
+  if (!provider) {
+    return res.status(400).json({ error: "Provider is required" });
+  }
+
+  try {
+    // Find connection if available
+    let connection = null;
+    if (connectionId) {
+      connection = await prisma.connection.findFirst({
+        where: { id: connectionId, userId: req.userId },
+      });
+    }
+    if (!connection) {
+      connection = await prisma.connection.findFirst({
+        where: { userId: req.userId, provider: { startsWith: provider } },
+        orderBy: { createdAt: "desc" },
+      });
+    }
+
+    if (provider === "github") {
+      const repo = config.repo || config.repository;
+      if (!repo || !repo.trim()) {
+        return res.status(400).json({ error: "Please choose or enter a repository name first." });
+      }
+
+      const cleanRepo = repo.trim().replace(/^https?:\/\/github\.com\//i, "");
+      const headers = {
+        "User-Agent": "Flowline-App",
+        Accept: "application/vnd.github.v3+json",
+      };
+
+      if (connection?.accessToken) {
+        headers.Authorization = `Bearer ${connection.accessToken}`;
+      } else if (process.env.GITHUB_TOKEN) {
+        headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+      }
+
+      if (event === "new_push") {
+        const ghRes = await fetch(`https://api.github.com/repos/${cleanRepo}/commits?per_page=1`, { headers });
+        if (!ghRes.ok) {
+          const errText = await ghRes.text().catch(() => "");
+          return res.status(ghRes.status).json({
+            error: `GitHub error (${ghRes.status}): Could not read commits for "${cleanRepo}". Check repo permissions.`,
+          });
+        }
+        const commits = await ghRes.json();
+        if (!Array.isArray(commits) || commits.length === 0) {
+          return res.status(404).json({ error: `No commits found in ${cleanRepo}` });
+        }
+        const commit = commits[0];
+        return res.json({
+          success: true,
+          sample: {
+            body: {
+              sha: commit.sha,
+              message: commit.commit?.message || "",
+              author_name: commit.commit?.author?.name || "",
+              html_url: commit.html_url,
+              repo: cleanRepo,
+            },
+          },
+        });
+      }
+
+      // Default: new_issue
+      const ghRes = await fetch(`https://api.github.com/repos/${cleanRepo}/issues?state=all&sort=created&direction=desc&per_page=5`, { headers });
+      if (!ghRes.ok) {
+        const errText = await ghRes.text().catch(() => "");
+        return res.status(ghRes.status).json({
+          error: `GitHub error (${ghRes.status}): Could not read issues for "${cleanRepo}". Check repo permissions.`,
+        });
+      }
+
+      const items = await ghRes.json();
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(404).json({
+          error: `No issues found in "${cleanRepo}". Create an issue on GitHub to test with real data!`,
+        });
+      }
+
+      const issue = items.find((i) => !i.pull_request) || items[0];
+      return res.json({
+        success: true,
+        sample: {
+          body: {
+            number: issue.number,
+            title: issue.title,
+            body: issue.body || "",
+            html_url: issue.html_url,
+            state: issue.state,
+            user_login: issue.user?.login || "user",
+            repo: cleanRepo,
+          },
+        },
+      });
+    }
+
+    if (provider === "gmail") {
+      if (!connection) {
+        return res.status(400).json({ error: "Please connect your Gmail account in Setup first." });
+      }
+
+      let accessToken = connection.accessToken;
+      const query = config.query || "";
+      let url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1`;
+      if (query.trim()) {
+        url += `&q=${encodeURIComponent(query.trim())}`;
+      }
+
+      let resGmail = await fetch(url, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (resGmail.status === 401 && connection.refreshToken) {
+        try {
+          const { refreshGoogleAccessToken } = require("../../../worker/src/integrations/google/refreshToken");
+          accessToken = await refreshGoogleAccessToken(connection.id, connection.refreshToken);
+          resGmail = await fetch(url, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+        } catch (rfErr) {
+          return res.status(401).json({ error: "Gmail token expired. Please reconnect your account." });
+        }
+      }
+
+      if (!resGmail.ok) {
+        return res.status(resGmail.status).json({ error: `Gmail API error (${resGmail.status}): Failed to fetch messages.` });
+      }
+
+      let listData = await resGmail.json();
+      let messages = listData.messages || [];
+
+      // If query returned no messages, fallback to any message
+      if (messages.length === 0 && query.trim()) {
+        const fallbackRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (fallbackRes.ok) {
+          const fallbackData = await fallbackRes.json();
+          messages = fallbackData.messages || [];
+        }
+      }
+
+      if (messages.length === 0) {
+        return res.status(404).json({ error: "No messages found in your Gmail account." });
+      }
+
+      const msgSummary = messages[0];
+      const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msgSummary.id}?format=full`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (!msgRes.ok) {
+        return res.status(msgRes.status).json({ error: "Failed to fetch Gmail message details." });
+      }
+
+      const msgData = await msgRes.json();
+      const headers = msgData.payload?.headers || [];
+      const headerMap = {};
+      for (const h of headers) {
+        headerMap[h.name.toLowerCase()] = h.value;
+      }
+
+      return res.json({
+        success: true,
+        sample: {
+          body: {
+            id: msgData.id,
+            threadId: msgData.threadId,
+            from: headerMap["from"] || "sender@example.com",
+            to: headerMap["to"] || "you@example.com",
+            subject: headerMap["subject"] || "No Subject",
+            body: msgData.snippet || "Email body content",
+            date: headerMap["date"] || new Date().toISOString(),
+          },
+        },
+      });
+    }
+
+    if (provider === "slack") {
+      if (!connection) {
+        return res.status(400).json({ error: "Please connect your Slack account in Setup first." });
+      }
+
+      const accessToken = connection.accessToken;
+      let channelId = config.channel || config.channelId;
+
+      if (!channelId || channelId.startsWith("#")) {
+        const listRes = await fetch("https://slack.com/api/conversations.list?types=public_channel,private_channel", {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        const listData = await listRes.json().catch(() => ({}));
+        if (listData.ok && Array.isArray(listData.channels) && listData.channels.length > 0) {
+          if (channelId && channelId.startsWith("#")) {
+            const match = listData.channels.find((c) => `#${c.name}` === channelId || c.name === channelId.replace("#", ""));
+            channelId = match ? match.id : listData.channels[0].id;
+          } else {
+            channelId = listData.channels[0].id;
+          }
+        }
+      }
+
+      if (!channelId) {
+        return res.status(400).json({ error: "Please select a Slack channel first." });
+      }
+
+      const histRes = await fetch(`https://slack.com/api/conversations.history?channel=${encodeURIComponent(channelId)}&limit=10`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (!histRes.ok) {
+        return res.status(histRes.status).json({ error: `Slack error (${histRes.status}): Failed to read channel history.` });
+      }
+
+      const histData = await histRes.json();
+      if (!histData.ok) {
+        return res.status(400).json({ error: `Slack error: ${histData.error || "Cannot access channel messages."}` });
+      }
+
+      const validMessages = (histData.messages || []).filter((m) => m.type === "message" && !m.subtype);
+      if (validMessages.length === 0) {
+        return res.status(404).json({ error: "No messages found in this channel yet. Send a message in Slack to test!" });
+      }
+
+      const latestMsg = validMessages[0];
+      return res.json({
+        success: true,
+        sample: {
+          body: {
+            text: latestMsg.text || "",
+            user: latestMsg.user || "U012EXAMPLE",
+            channel: channelId,
+            ts: latestMsg.ts || "",
+          },
+        },
+      });
+    }
+
+    return res.status(400).json({ error: `Trigger provider "${provider}" does not support sample fetching.` });
+  } catch (err) {
+    console.error("[fetch-sample] Error:", err);
+    return res.status(500).json({ error: err.message || "Failed to fetch trigger sample" });
+  }
+});
+
 module.exports = router;
+

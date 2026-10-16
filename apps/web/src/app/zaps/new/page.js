@@ -221,6 +221,8 @@ export default function NewZapBuilderPage() {
   });
   const [testStepLoading, setTestStepLoading] = useState(false);
   const [testStepResult, setTestStepResult] = useState(null);
+  const [isFetchingSample, setIsFetchingSample] = useState(false);
+  const [sampleFetchStatus, setSampleFetchStatus] = useState(null);
 
   // Process return query params from OAuth redirects (/zaps/new?connected=gmail|slack|github&connectionId=...)
   useEffect(() => {
@@ -360,6 +362,41 @@ export default function NewZapBuilderPage() {
       );
     }
     closePanel();
+  };
+
+  // Fetch real trigger sample data from provider
+  const handleFetchSample = async () => {
+    setIsFetchingSample(true);
+    setSampleFetchStatus(null);
+    try {
+      const res = await authFetch("/zaps/test-step/fetch-sample", {
+        method: "POST",
+        body: JSON.stringify({
+          provider: panelDraft?.config?.provider || "webhook",
+          event: panelDraft?.config?.event,
+          config: panelDraft?.config || {},
+          connectionId: panelDraft?.config?.connectionId || panelDraft?.connectionId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "Failed to fetch sample data");
+      }
+      if (data.sample) {
+        setSampleData(data.sample);
+        setSampleFetchStatus({
+          type: "success",
+          message: `Successfully loaded live record from ${panelDraft?.config?.provider || "provider"}!`,
+        });
+      }
+    } catch (err) {
+      setSampleFetchStatus({
+        type: "error",
+        message: err.message,
+      });
+    } finally {
+      setIsFetchingSample(false);
+    }
   };
 
   // One-line summary generators
@@ -814,29 +851,87 @@ export default function NewZapBuilderPage() {
                 /* ── Test Tab ── */
                 <div className="space-y-4">
                   {activePanel.target === "trigger" ? (
-                    /* ── Trigger: Show Sample Payload Preview ── */
-                    <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl space-y-3">
-                      <h4 className="text-sm font-semibold text-slate-200">Sample Trigger Data</h4>
-                      <p className="text-xs text-slate-400">
-                        This is a preview of the data your trigger will produce. Use these fields in your action steps via &quot;Insert Variable&quot;.
-                      </p>
-                      <div className="border border-slate-800 rounded-lg overflow-hidden font-mono text-xs">
-                        <table className="w-full text-left border-collapse">
-                          <thead>
-                            <tr className="bg-slate-900 border-b border-slate-800 text-slate-400 text-[11px]">
-                              <th className="p-2 border-r border-slate-800">Key</th>
-                              <th className="p-2">Value</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {Object.entries(sampleData?.body || sampleData || {}).map(([k, v]) => (
-                              <tr key={k} className="border-b border-slate-800/60 hover:bg-slate-900/50">
-                                <td className="p-2 text-[#c4f542] font-semibold border-r border-slate-800">{k}</td>
-                                <td className="p-2 text-slate-200 truncate max-w-xs">{typeof v === "object" ? JSON.stringify(v) : String(v)}</td>
+                    /* ── Trigger: Live Fetch & Sample Preview ── */
+                    <div className="space-y-4">
+                      {["github", "gmail", "slack"].includes(panelDraft.config?.provider) && (
+                        <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-semibold text-slate-200">Fetch Real Event</h4>
+                            <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-bold">
+                              LIVE API
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-400">
+                            Pull an actual record from your connected {panelDraft.config?.provider === "github" ? "GitHub repository" : panelDraft.config?.provider === "gmail" ? "Gmail inbox" : "Slack channel"} to test with real production data.
+                          </p>
+                          <button
+                            type="button"
+                            disabled={isFetchingSample}
+                            onClick={handleFetchSample}
+                            className={`w-full py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                              isFetchingSample
+                                ? "bg-slate-700 text-slate-400 cursor-not-allowed"
+                                : "bg-[#c4f542] text-[#0d1117] hover:bg-[#d4ff62]"
+                            }`}
+                          >
+                            {isFetchingSample ? (
+                              <>
+                                <span className="inline-block animate-spin w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full" />
+                                <span>Fetching live record...</span>
+                              </>
+                            ) : (
+                              <>
+                                <span>⚡</span>
+                                <span>
+                                  Fetch Latest {panelDraft.config?.provider === "github" ? (panelDraft.config?.event === "new_push" ? "Commit" : "Issue") : panelDraft.config?.provider === "gmail" ? "Email" : "Message"}
+                                </span>
+                              </>
+                            )}
+                          </button>
+
+                          {sampleFetchStatus && (
+                            <div
+                              className={`p-3 rounded-lg text-xs font-mono border ${
+                                sampleFetchStatus.type === "success"
+                                  ? "bg-green-950/40 border-green-700 text-green-300"
+                                  : "bg-red-950/40 border-red-700 text-red-300"
+                              }`}
+                            >
+                              {sampleFetchStatus.type === "success" ? "✓ " : "✕ "}
+                              {sampleFetchStatus.message}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-semibold text-slate-200">Sample Trigger Variables</h4>
+                          <span className="text-[10px] font-mono text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
+                            {Object.keys(sampleData?.body || sampleData || {}).length} fields
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-400">
+                          These fields are available to insert into your action steps:
+                        </p>
+                        <div className="border border-slate-800 rounded-lg overflow-hidden font-mono text-xs">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="bg-slate-900 border-b border-slate-800 text-slate-400 text-[11px]">
+                                <th className="p-2 border-r border-slate-800">Field</th>
+                                <th className="p-2">Value</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </thead>
+                            <tbody>
+                              {Object.entries(sampleData?.body || sampleData || {}).map(([k, v]) => (
+                                <tr key={k} className="border-b border-slate-800/60 hover:bg-slate-900/50">
+                                  <td className="p-2 text-[#c4f542] font-semibold border-r border-slate-800">{k}</td>
+                                  <td className="p-2 text-slate-200 truncate max-w-xs">{typeof v === "object" ? JSON.stringify(v) : String(v)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                     </div>
                   ) : (
