@@ -34,9 +34,11 @@ router.get("/start", authMiddleware, (req, res) => {
     });
   }
 
+  const returnUrl = req.query.returnUrl || "/connections";
+
   // Create signed state token containing userId for CSRF protection and account binding
   const stateToken = jwt.sign(
-    { userId, provider: "gmail", nonce: Math.random().toString(36).substring(2) },
+    { userId, provider: "gmail", returnUrl, nonce: Math.random().toString(36).substring(2) },
     process.env.JWT_SECRET,
     { expiresIn: "15m" }
   );
@@ -69,22 +71,25 @@ router.get("/start", authMiddleware, (req, res) => {
 router.get("/callback", async (req, res) => {
   const { code, state, error: googleError } = req.query;
 
-  const frontendAppUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+  let decodedState = {};
+  try {
+    if (state) {
+      decodedState = jwt.verify(state, process.env.JWT_SECRET);
+      req.userId = decodedState.userId;
+    }
+  } catch {
+    // continue
+  }
+
+  const returnUrl = decodedState.returnUrl || "/connections";
+  const redirectSep = returnUrl.includes("?") ? "&" : "?";
 
   if (googleError) {
-    return res.redirect(`${frontendAppUrl}/zaps/new?error=${encodeURIComponent(`Google OAuth denied: ${googleError}`)}`);
+    return res.redirect(`${frontendAppUrl}${returnUrl}${redirectSep}error=${encodeURIComponent(`Google OAuth denied: ${googleError}`)}`);
   }
 
-  if (!code || !state) {
-    return res.redirect(`${frontendAppUrl}/zaps/new?error=${encodeURIComponent("Missing authorization code or state token")}`);
-  }
-
-  let decodedState;
-  try {
-    decodedState = jwt.verify(state, process.env.JWT_SECRET);
-    req.userId = decodedState.userId;
-  } catch {
-    return res.redirect(`${frontendAppUrl}/zaps/new?error=${encodeURIComponent("Invalid or expired OAuth state token")}`);
+  if (!code || !state || !req.userId) {
+    return res.redirect(`${frontendAppUrl}${returnUrl}${redirectSep}error=${encodeURIComponent("Invalid or expired OAuth state token")}`);
   }
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -109,7 +114,7 @@ router.get("/callback", async (req, res) => {
 
     if (!tokenRes.ok || tokenData.error) {
       const errMsg = tokenData.error_description || tokenData.error || "Token exchange failed";
-      return res.redirect(`${frontendAppUrl}/zaps/new?error=${encodeURIComponent(errMsg)}`);
+      return res.redirect(`${frontendAppUrl}${returnUrl}${redirectSep}error=${encodeURIComponent(errMsg)}`);
     }
 
     // 2. Fetch user identity (email) from Google UserInfo endpoint
@@ -140,11 +145,11 @@ router.get("/callback", async (req, res) => {
       },
     });
 
-    // 4. Redirect user back to builder with connection ID
-    return res.redirect(`${frontendAppUrl}/zaps/new?connected=gmail&connectionId=${connection.id}`);
+    // 4. Redirect user back to starting page with connection ID
+    return res.redirect(`${frontendAppUrl}${returnUrl}${redirectSep}connected=gmail&connectionId=${connection.id}`);
   } catch (err) {
     console.error("[Gmail OAuth Callback Error]:", err);
-    return res.redirect(`${frontendAppUrl}/zaps/new?error=${encodeURIComponent(err.message || "OAuth processing failed")}`);
+    return res.redirect(`${frontendAppUrl}${returnUrl}${redirectSep}error=${encodeURIComponent(err.message || "OAuth processing failed")}`);
   }
 });
 

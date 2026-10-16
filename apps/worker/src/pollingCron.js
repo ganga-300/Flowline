@@ -523,17 +523,27 @@ async function runPollingCycle() {
   console.log("[polling] Cycle complete");
 }
 
-async function start() {
-  console.log("[polling] Polling cron engine started (interval: 5 min)");
-
-  while (true) {
-    try {
-      await runPollingCycle();
-    } catch (err) {
-      console.error("[polling] Unhandled error in polling cycle:", err.message);
-    }
-    await new Promise((resolve) => setTimeout(resolve, POLL_CYCLE_MS));
+async function pollSingleTrigger(trigger) {
+  const provider = trigger.config?.provider || "";
+  if (provider === "github") {
+    return await pollGitHubTrigger(trigger);
+  }
+  if (provider === "gmail") {
+    return await pollGmailTrigger(trigger);
+  }
+  if (provider === "slack") {
+    return await pollSlackTrigger(trigger);
   }
 }
 
-start();
+if (require.main === module) {
+  start();
+}
+
+module.exports = {
+  runPollingCycle,
+  pollGitHubTrigger,
+  pollGmailTrigger,
+  pollSlackTrigger,
+  pollSingleTrigger,
+};

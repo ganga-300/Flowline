@@ -177,6 +177,33 @@ router.post("/:id/run", requireAuth, async (req, res) => {
       return res.status(404).json({ error: "Zap not found" });
     }
 
+    // If Zap has a POLLING trigger (GitHub, Gmail, Slack), trigger instant real-time poll
+    if (zap.trigger?.type === "POLLING") {
+      try {
+        const { pollSingleTrigger } = require("../../../worker/src/pollingCron");
+        const fullTrigger = await prisma.trigger.findUnique({
+          where: { id: zap.trigger.id },
+          include: { connection: true },
+        });
+
+        if (fullTrigger) {
+          await pollSingleTrigger(fullTrigger);
+          const recentRun = await prisma.zapRun.findFirst({
+            where: { zapId: zap.id },
+            orderBy: { createdAt: "desc" },
+          });
+
+          return res.status(202).json({
+            success: true,
+            runId: recentRun?.id || null,
+            message: `Checked ${zap.trigger.config?.provider || "trigger"} for new events and executed live!`,
+          });
+        }
+      } catch (pollErr) {
+        console.error("[manual run] Error executing poller:", pollErr);
+      }
+    }
+
     const payload = req.body?.payload || { manual: true, triggeredAt: new Date().toISOString() };
     const idempotencyKey = `${zap.id}-manual-${Date.now()}`;
 

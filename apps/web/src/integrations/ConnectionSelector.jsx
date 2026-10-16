@@ -66,8 +66,9 @@ export function ConnectionSelector({
       setNotice("Authentication required. Please log in first.");
       return;
     }
-    // Navigate to OAuth start endpoint on Flowline server
-    window.location.href = `${API_BASE_URL}/connections/${providerId}/start?token=${encodeURIComponent(token)}`;
+    // Navigate to OAuth start endpoint on Flowline server, returning back to current page
+    const currentPath = typeof window !== "undefined" ? window.location.pathname + window.location.search : "/connections";
+    window.location.href = `${API_BASE_URL}/connections/${providerId}/start?token=${encodeURIComponent(token)}&returnUrl=${encodeURIComponent(currentPath)}`;
   };
 
   return (

@@ -111,7 +111,7 @@ export default function ConnectionsPage() {
       alert("Authentication token missing. Please log in first.");
       return;
     }
-    window.location.href = `${API_BASE_URL}/connections/${provider}/start?token=${encodeURIComponent(token)}`;
+    window.location.href = `${API_BASE_URL}/connections/${provider}/start?token=${encodeURIComponent(token)}&returnUrl=${encodeURIComponent("/connections")}`;
   };
 
   const handleDisconnect = async (connId, providerName) => {

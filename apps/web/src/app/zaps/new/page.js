@@ -222,7 +222,7 @@ export default function NewZapBuilderPage() {
   const [testStepLoading, setTestStepLoading] = useState(false);
   const [testStepResult, setTestStepResult] = useState(null);
 
-  // Process return query params from Google OAuth redirect (/zaps/new?connected=gmail&connectionId=...)
+  // Process return query params from OAuth redirects (/zaps/new?connected=gmail|slack|github&connectionId=...)
   useEffect(() => {
     if (typeof window === "undefined") return;
     const urlParams = new URLSearchParams(window.location.search);
@@ -230,12 +230,13 @@ export default function NewZapBuilderPage() {
     const connectionIdParam = urlParams.get("connectionId");
     const errorParam = urlParams.get("error");
 
-    if (connected === "gmail" && connectionIdParam) {
+    if (connected && connectionIdParam) {
       queueMicrotask(() => {
-        setSuccessToast("Gmail connected successfully!");
+        const provName = connected === "gmail" ? "Gmail" : connected === "slack" ? "Slack" : "GitHub";
+        setSuccessToast(`${provName} connected successfully!`);
         setSteps((prevSteps) =>
           prevSteps.map((s) => {
-            if (s.type === "ACTION" && s.config?.provider === "gmail") {
+            if (s.type === "ACTION" && s.config?.provider === connected) {
               return {
                 ...s,
                 isConfigured: true,
@@ -248,6 +249,18 @@ export default function NewZapBuilderPage() {
             return s;
           })
         );
+        setTrigger((prevTrigger) => {
+          if (prevTrigger.config?.provider === connected) {
+            return {
+              ...prevTrigger,
+              config: {
+                ...prevTrigger.config,
+                connectionId: connectionIdParam,
+              },
+            };
+          }
+          return prevTrigger;
+        });
       });
       window.history.replaceState({}, document.title, window.location.pathname);
     } else if (errorParam) {

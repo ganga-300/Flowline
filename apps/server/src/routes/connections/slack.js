@@ -26,8 +26,10 @@ router.get("/start", authMiddleware, (req, res) => {
     });
   }
 
+  const returnUrl = req.query.returnUrl || "/connections";
+
   const stateToken = jwt.sign(
-    { userId, provider: "slack", nonce: Math.random().toString(36).substring(2) },
+    { userId, provider: "slack", returnUrl, nonce: Math.random().toString(36).substring(2) },
     process.env.JWT_SECRET,
     { expiresIn: "15m" }
   );
@@ -62,23 +64,25 @@ router.get("/start", authMiddleware, (req, res) => {
  * Handles Slack OAuth 2.0 callback
  */
 router.get("/callback", async (req, res) => {
-  const { code, state, error: slackError } = req.query;
-  const frontendAppUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+  let decodedState = {};
+  try {
+    if (state) {
+      decodedState = jwt.verify(state, process.env.JWT_SECRET);
+      req.userId = decodedState.userId;
+    }
+  } catch {
+    // continue
+  }
+
+  const returnUrl = decodedState.returnUrl || "/connections";
+  const redirectSep = returnUrl.includes("?") ? "&" : "?";
 
   if (slackError) {
-    return res.redirect(`${frontendAppUrl}/connections?error=${encodeURIComponent(`Slack OAuth denied: ${slackError}`)}`);
+    return res.redirect(`${frontendAppUrl}${returnUrl}${redirectSep}error=${encodeURIComponent(`Slack OAuth denied: ${slackError}`)}`);
   }
 
-  if (!code || !state) {
-    return res.redirect(`${frontendAppUrl}/connections?error=${encodeURIComponent("Missing authorization code or state token")}`);
-  }
-
-  let decodedState;
-  try {
-    decodedState = jwt.verify(state, process.env.JWT_SECRET);
-    req.userId = decodedState.userId;
-  } catch {
-    return res.redirect(`${frontendAppUrl}/connections?error=${encodeURIComponent("Invalid or expired OAuth state token")}`);
+  if (!code || !state || !req.userId) {
+    return res.redirect(`${frontendAppUrl}${returnUrl}${redirectSep}error=${encodeURIComponent("Missing authorization code or state token")}`);
   }
 
   const clientId = process.env.SLACK_CLIENT_ID;
@@ -100,7 +104,7 @@ router.get("/callback", async (req, res) => {
     const tokenData = await tokenRes.json();
 
     if (!tokenData.ok) {
-      return res.redirect(`${frontendAppUrl}/connections?error=${encodeURIComponent(tokenData.error || "Slack token exchange failed")}`);
+      return res.redirect(`${frontendAppUrl}${returnUrl}${redirectSep}error=${encodeURIComponent(tokenData.error || "Slack token exchange failed")}`);
     }
 
     const teamName = tokenData.team?.name || "Workspace";
@@ -114,10 +118,10 @@ router.get("/callback", async (req, res) => {
       },
     });
 
-    return res.redirect(`${frontendAppUrl}/connections?connected=slack&connectionId=${connection.id}`);
+    return res.redirect(`${frontendAppUrl}${returnUrl}${redirectSep}connected=slack&connectionId=${connection.id}`);
   } catch (err) {
     console.error("[Slack OAuth Callback Error]:", err);
-    return res.redirect(`${frontendAppUrl}/connections?error=${encodeURIComponent(err.message || "OAuth processing failed")}`);
+    return res.redirect(`${frontendAppUrl}${returnUrl}${redirectSep}error=${encodeURIComponent(err.message || "OAuth processing failed")}`);
   }
 });
 
