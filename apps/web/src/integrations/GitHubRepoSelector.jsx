@@ -4,12 +4,12 @@ import { useState, useEffect } from "react";
 import { authFetch, API_BASE_URL } from "@/lib/api";
 
 export function GitHubRepoSelector({ value, onChange, onSampleDataChange }) {
-  const [mode, setMode] = useState("org"); // "org" | "my_repos" | "manual"
+  const [mode, setMode] = useState("my_repos"); // "org" | "my_repos" | "manual"
   const [ownerInput, setOwnerInput] = useState(() => {
     if (value && value.includes("/")) {
       return value.split("/")[0];
     }
-    return "openfoodfacts";
+    return "";
   });
   const [repos, setRepos] = useState([]);
   const [searchFilter, setSearchFilter] = useState("");
@@ -160,7 +160,7 @@ export function GitHubRepoSelector({ value, onChange, onSampleDataChange }) {
           <div className="flex gap-2">
             <input
               type="text"
-              placeholder="Username or Org (e.g. openfoodfacts)"
+              placeholder="Username or Org (e.g. facebook)"
               value={ownerInput}
               onChange={(e) => setOwnerInput(e.target.value)}
               onKeyDown={(e) => {
@@ -203,7 +203,7 @@ export function GitHubRepoSelector({ value, onChange, onSampleDataChange }) {
         <div>
           <input
             type="text"
-            placeholder="owner/repository (e.g. openfoodfacts/openfoodfacts-server)"
+            placeholder="owner/repository (e.g. facebook/react)"
             value={value || ""}
             onChange={(e) => handleSelectRepo(e.target.value.trim())}
             className="w-full bg-[#161b22] border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-[#c4f542] outline-none font-mono"

@@ -120,6 +120,61 @@ function getStepIcon(type) {
   }
 }
 
+// ── Slack Channel Dropdown (fetches channels dynamically) ──
+function SlackChannelDropdown({ connectionId, value, onChange }) {
+  const [channels, setChannels] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!connectionId) return;
+    let cancelled = false;
+    setLoading(true);
+    authFetch(`/connections/${connectionId}/options?type=slack_channels`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setChannels(data.options || []);
+      })
+      .catch(() => {
+        if (!cancelled) setChannels([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [connectionId]);
+
+  if (!connectionId) {
+    return (
+      <div>
+        <label className="block text-xs font-medium text-slate-300 mb-1.5">Channel</label>
+        <p className="text-[11px] text-slate-500">Select a Slack connection above first.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <label className="block text-xs font-medium text-slate-300 mb-1.5">Channel</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={loading}
+        className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3.5 py-2.5 text-xs text-white font-mono focus:border-[#c4f542] outline-none disabled:opacity-50"
+      >
+        <option value="">{loading ? "Loading channels..." : "Select a channel"}</option>
+        {channels.map((ch) => (
+          <option key={ch.value || ch.id} value={ch.value || ch.id}>
+            {ch.label || ch.name || ch.value}
+          </option>
+        ))}
+      </select>
+      <p className="text-[11px] text-slate-500 mt-1">
+        Select the channel to listen for new messages.
+      </p>
+    </div>
+  );
+}
+
 export default function NewZapBuilderPage() {
   const router = useRouter();
   const { isAuthenticated } = useAuthProtection();
@@ -1025,29 +1080,19 @@ export default function NewZapBuilderPage() {
                               });
                             }}
                           />
-                          <div>
-                            <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                              Channel Name or ID
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="e.g. #general or C01234567"
-                              value={panelDraft.config?.channel || ""}
-                              onChange={(e) =>
-                                setPanelDraft({
-                                  ...panelDraft,
-                                  config: {
-                                    ...panelDraft.config,
-                                    channel: e.target.value,
-                                  },
-                                })
-                              }
-                              className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:border-[#c4f542] outline-none font-mono text-xs"
-                            />
-                            <p className="text-[11px] text-slate-500 mt-1">
-                              Channel name (e.g. #general) or channel ID to listen for new messages.
-                            </p>
-                          </div>
+                          <SlackChannelDropdown
+                            connectionId={panelDraft.config?.connectionId || panelDraft.connectionId}
+                            value={panelDraft.config?.channel || ""}
+                            onChange={(ch) =>
+                              setPanelDraft({
+                                ...panelDraft,
+                                config: {
+                                  ...panelDraft.config,
+                                  channel: ch,
+                                },
+                              })
+                            }
+                          />
                         </div>
                       )}
 
