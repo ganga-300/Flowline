@@ -719,85 +719,115 @@ export default function NewZapBuilderPage() {
               {activePanel.tab === "test" ? (
                 /* ── Test Tab ── */
                 <div className="space-y-4">
-                  <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl space-y-3">
-                    <h4 className="text-sm font-semibold text-slate-200">Test This Step</h4>
-                    <p className="text-xs text-slate-400">
-                      Run this step with sample data to verify it works before publishing.
-                    </p>
-                    <button
-                      type="button"
-                      disabled={testStepLoading}
-                      onClick={async () => {
-                        setTestStepLoading(true);
-                        setTestStepResult(null);
-                        try {
-                          const token = localStorage.getItem("flowline_token");
-                          const stepPayload = {
-                            step: panelDraft,
-                            sampleContext: { trigger: sampleData, steps: {} },
-                          };
-                          const res = await authFetch("/zaps/test-step", {
-                            method: "POST",
-                            body: JSON.stringify(stepPayload),
-                          });
-                          const data = await res.json();
-                          setTestStepResult(data);
-                        } catch (err) {
-                          setTestStepResult({ status: "ERROR", error: err.message, output: null });
-                        } finally {
-                          setTestStepLoading(false);
-                        }
-                      }}
-                      className={`w-full py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
-                        testStepLoading
-                          ? "bg-slate-700 text-slate-400"
-                          : "bg-[#c4f542] text-[#0d1117] hover:bg-[#d4ff62]"
-                      }`}
-                    >
-                      {testStepLoading ? "⏳ Running..." : "⚡ Test Step Now"}
-                    </button>
-                  </div>
-
-                  {testStepResult && (
-                    <div className={`p-4 rounded-xl border ${
-                      testStepResult.status === "SUCCESS"
-                        ? "bg-green-950/40 border-green-700"
-                        : "bg-red-950/40 border-red-700"
-                    }`}>
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className={`text-xs font-mono font-bold ${
-                          testStepResult.status === "SUCCESS" ? "text-green-400" : "text-red-400"
-                        }`}>
-                          {testStepResult.status === "SUCCESS" ? "✓ SUCCESS" : "✕ ERROR"}
-                        </span>
+                  {activePanel.target === "trigger" ? (
+                    /* ── Trigger: Show Sample Payload Preview ── */
+                    <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl space-y-3">
+                      <h4 className="text-sm font-semibold text-slate-200">Sample Trigger Data</h4>
+                      <p className="text-xs text-slate-400">
+                        This is a preview of the data your trigger will produce. Use these fields in your action steps via &quot;Insert Variable&quot;.
+                      </p>
+                      <div className="border border-slate-800 rounded-lg overflow-hidden font-mono text-xs">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-slate-900 border-b border-slate-800 text-slate-400 text-[11px]">
+                              <th className="p-2 border-r border-slate-800">Key</th>
+                              <th className="p-2">Value</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Object.entries(sampleData?.body || sampleData || {}).map(([k, v]) => (
+                              <tr key={k} className="border-b border-slate-800/60 hover:bg-slate-900/50">
+                                <td className="p-2 text-[#c4f542] font-semibold border-r border-slate-800">{k}</td>
+                                <td className="p-2 text-slate-200 truncate max-w-xs">{typeof v === "object" ? JSON.stringify(v) : String(v)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
-                      {testStepResult.error && (
-                        <p className="text-xs text-red-300 mb-2 font-mono">{testStepResult.error}</p>
-                      )}
-                      {testStepResult.output && (
-                        <div className="space-y-2">
-                          <p className="text-[11px] text-slate-400 font-mono uppercase font-bold">Step Output Table</p>
-                          <div className="border border-slate-800 rounded-lg overflow-hidden font-mono text-xs">
-                            <table className="w-full text-left border-collapse">
-                              <thead>
-                                <tr className="bg-slate-900 border-b border-slate-800 text-slate-400 text-[11px]">
-                                  <th className="p-2 border-r border-slate-800">Key</th>
-                                  <th className="p-2">Value</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {Object.entries(testStepResult.output).map(([k, v]) => (
-                                  <tr key={k} className="border-b border-slate-800/60 hover:bg-slate-900/50">
-                                    <td className="p-2 text-[#c4f542] font-semibold border-r border-slate-800">{k}</td>
-                                    <td className="p-2 text-slate-200 truncate max-w-xs">{typeof v === "object" ? JSON.stringify(v) : String(v)}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                    </div>
+                  ) : (
+                    /* ── Action: Run test step against the server ── */
+                    <>
+                      <div className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl space-y-3">
+                        <h4 className="text-sm font-semibold text-slate-200">Test This Step</h4>
+                        <p className="text-xs text-slate-400">
+                          Run this step with sample data to verify it works before publishing.
+                        </p>
+                        <button
+                          type="button"
+                          disabled={testStepLoading}
+                          onClick={async () => {
+                            setTestStepLoading(true);
+                            setTestStepResult(null);
+                            try {
+                              const stepPayload = {
+                                step: panelDraft,
+                                sampleContext: { trigger: sampleData, steps: {} },
+                              };
+                              const res = await authFetch("/zaps/test-step", {
+                                method: "POST",
+                                body: JSON.stringify(stepPayload),
+                              });
+                              const data = await res.json();
+                              setTestStepResult(data);
+                            } catch (err) {
+                              setTestStepResult({ status: "ERROR", error: err.message, output: null });
+                            } finally {
+                              setTestStepLoading(false);
+                            }
+                          }}
+                          className={`w-full py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                            testStepLoading
+                              ? "bg-slate-700 text-slate-400"
+                              : "bg-[#c4f542] text-[#0d1117] hover:bg-[#d4ff62]"
+                          }`}
+                        >
+                          {testStepLoading ? "⏳ Running..." : "⚡ Test Step Now"}
+                        </button>
+                      </div>
+
+                      {testStepResult && (
+                        <div className={`p-4 rounded-xl border ${
+                          testStepResult.status === "SUCCESS"
+                            ? "bg-green-950/40 border-green-700"
+                            : "bg-red-950/40 border-red-700"
+                        }`}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className={`text-xs font-mono font-bold ${
+                              testStepResult.status === "SUCCESS" ? "text-green-400" : "text-red-400"
+                            }`}>
+                              {testStepResult.status === "SUCCESS" ? "✓ SUCCESS" : "✕ ERROR"}
+                            </span>
                           </div>
+                          {testStepResult.error && (
+                            <p className="text-xs text-red-300 mb-2 font-mono">{testStepResult.error}</p>
+                          )}
+                          {testStepResult.output && (
+                            <div className="space-y-2">
+                              <p className="text-[11px] text-slate-400 font-mono uppercase font-bold">Step Output Table</p>
+                              <div className="border border-slate-800 rounded-lg overflow-hidden font-mono text-xs">
+                                <table className="w-full text-left border-collapse">
+                                  <thead>
+                                    <tr className="bg-slate-900 border-b border-slate-800 text-slate-400 text-[11px]">
+                                      <th className="p-2 border-r border-slate-800">Key</th>
+                                      <th className="p-2">Value</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {Object.entries(testStepResult.output).map(([k, v]) => (
+                                      <tr key={k} className="border-b border-slate-800/60 hover:bg-slate-900/50">
+                                        <td className="p-2 text-[#c4f542] font-semibold border-r border-slate-800">{k}</td>
+                                        <td className="p-2 text-slate-200 truncate max-w-xs">{typeof v === "object" ? JSON.stringify(v) : String(v)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
-                    </div>
+                    </>
                   )}
                 </div>
               ) : (
