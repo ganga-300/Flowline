@@ -258,12 +258,9 @@ export default function DashboardPage() {
                     </span>
                   </div>
 
-                  <h3 className="text-base font-semibold text-white mb-1 group-hover:text-[#c4f542] transition-colors">
+                  <h3 className="text-base font-semibold text-white mb-4 group-hover:text-[#c4f542] transition-colors">
                     {zap.zapName || zap.name || "Untitled Zap"}
                   </h3>
-                  <p className="text-xs font-mono text-slate-400 mb-4 line-clamp-2">
-                    ID: {zap.id}
-                  </p>
                 </div>
 
                 <div className="pt-4 border-t border-slate-800/80 flex items-center justify-between">
