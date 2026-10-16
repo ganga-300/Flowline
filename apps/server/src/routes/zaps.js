@@ -203,6 +203,49 @@ router.get("/:id/runs/:runId",requireAuth, async (req, res) => {
     res.status(500).json({ error: "Failed to fetch run trace" });
   }
 });
+
+// POST /zaps/:id/runs/:runId/retry - re-queue a specific execution using its original triggerPayload
+router.post("/:id/runs/:runId/retry", requireAuth, async (req, res) => {
+  try {
+    const zap = await prisma.zap.findFirst({
+      where: { id: req.params.id, userId: req.userId },
+    });
+
+    if (!zap) {
+      return res.status(404).json({ error: "Zap not found" });
+    }
+
+    const previousRun = await prisma.zapRun.findFirst({
+      where: { id: req.params.runId, zapId: zap.id },
+    });
+
+    if (!previousRun) {
+      return res.status(404).json({ error: "Original run not found" });
+    }
+
+    const idempotencyKey = `${zap.id}-retry-${previousRun.id}-${Date.now()}`;
+    const newRun = await prisma.zapRun.create({
+      data: {
+        zapId: zap.id,
+        status: "QUEUED",
+        idempotencyKey,
+        triggerPayload: previousRun.triggerPayload || { retriedFrom: previousRun.id },
+      },
+    });
+
+    await zapExecutionQueue.add("execute-zap-run", { zapRunId: newRun.id });
+
+    return res.status(202).json({
+      success: true,
+      runId: newRun.id,
+      message: "Run re-queued successfully!",
+    });
+  } catch (err) {
+    console.error("Error retrying run:", err);
+    return res.status(500).json({ error: "Failed to retry run: " + err.message });
+  }
+});
+
 // POST /zaps/:id/run - trigger a manual instant run for a Zap
 router.post("/:id/run", requireAuth, async (req, res) => {
   try {

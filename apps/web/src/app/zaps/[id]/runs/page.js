@@ -234,6 +234,8 @@ export default function ZapRunsPage({ params }) {
   const [expandedRunId, setExpandedRunId] = useState(null);
   const [runDetails, setRunDetails] = useState({});
   const [loadingDetails, setLoadingDetails] = useState({});
+  const [retryingRunId, setRetryingRunId] = useState(null);
+  const [retryToast, setRetryToast] = useState(null);
 
   // Fetch Zap details
   useEffect(() => {
@@ -317,6 +319,34 @@ export default function ZapRunsPage({ params }) {
     }
   };
 
+  // Retry an execution run
+  const handleRetryRun = async (runId) => {
+    setRetryingRunId(runId);
+    setRetryToast(null);
+    try {
+      const res = await authFetch(`/zaps/${zapId}/runs/${runId}/retry`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to retry run");
+      }
+      setRetryToast({
+        type: "success",
+        message: "Run re-queued successfully! Live poller will process it.",
+      });
+      setTimeout(() => {
+        fetchRuns(selectedStatus);
+      }, 1000);
+    } catch (err) {
+      setRetryToast({ type: "error", message: err.message });
+    } finally {
+      setRetryingRunId(null);
+      setTimeout(() => setRetryToast(null), 5000);
+    }
+  };
+
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#0d1117] flex items-center justify-center font-mono text-xs text-slate-400">
@@ -396,6 +426,25 @@ export default function ZapRunsPage({ params }) {
           </div>
         )}
 
+        {/* Retry Toast Banner */}
+        {retryToast && (
+          <div
+            className={`mb-6 p-4 rounded-xl text-sm font-mono flex items-center justify-between border ${
+              retryToast.type === "success"
+                ? "bg-green-950/60 border-green-700 text-green-200"
+                : "bg-red-950/60 border-red-700 text-red-200"
+            }`}
+          >
+            <span>{retryToast.type === "success" ? "✓ " : "✕ "}{retryToast.message}</span>
+            <button
+              onClick={() => setRetryToast(null)}
+              className="text-xs text-slate-400 hover:text-white ml-4 cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Loading Spinner */}
         {isLoadingRuns ? (
           <div className="text-center py-20 bg-[#161b22]/40 rounded-2xl border border-slate-800">
@@ -423,7 +472,7 @@ export default function ZapRunsPage({ params }) {
               </div>
               <div className="flex items-center gap-6">
                 <span>Duration</span>
-                <span className="w-16 text-right">Details</span>
+                <span className="w-24 text-right">Actions</span>
               </div>
             </div>
 
@@ -460,10 +509,34 @@ export default function ZapRunsPage({ params }) {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-4">
                       <div className="text-xs font-mono text-slate-400">
                         {calculateDuration(run.startedAt, run.completedAt)}
                       </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRetryRun(run.id);
+                        }}
+                        disabled={retryingRunId === run.id}
+                        title="Re-run this execution with original trigger payload"
+                        className="px-2.5 py-1 text-xs font-mono rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 hover:border-[#c4f542]/50 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        {retryingRunId === run.id ? (
+                          <>
+                            <span className="w-3 h-3 border-2 border-[#c4f542] border-t-transparent rounded-full animate-spin" />
+                            <span>Retrying...</span>
+                          </>
+                        ) : (
+                          <>
+                            <RefreshIcon className="w-3.5 h-3.5 text-[#c4f542]" />
+                            <span>Retry</span>
+                          </>
+                        )}
+                      </button>
+
                       <div className="text-slate-400 hover:text-white transition-colors">
                         {isExpanded ? (
                           <ChevronDownIcon className="w-5 h-5 text-[#c4f542]" />
