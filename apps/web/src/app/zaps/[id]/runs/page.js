@@ -1,637 +1,244 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { ArrowLeft, History, Pencil, RefreshCw } from "lucide-react";
 import { authFetch } from "@/lib/api";
-import { useAuthProtection } from "@/lib/useAuthProtection";
+import { AppShell, PageHeader } from "@/components/layout";
+import { Alert, Button, EmptyState, Modal, Tabs, Toast } from "@/components/ui";
+import { AppIcon } from "@/components/icons/AppIcon";
+import { describeTrigger } from "@/features/zaps/describeTrigger";
+import { RunRow, RunRowSkeleton } from "@/features/runs/RunRow";
+import { RUN_FILTERS, isActive, runStatusMeta } from "@/features/runs/runStatus";
 
-// ── Icons ────────────────────────────────────────────────────────────
-function ZapIcon({ className = "w-5 h-5" }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-    </svg>
-  );
-}
+const POLL_MS = 4000;
 
-function ArrowLeftIcon({ className = "w-4 h-4" }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-    </svg>
-  );
-}
+const EMPTY_COPY = {
+  ALL: { title: "No runs yet", description: "When this Zap's trigger fires, or you press Run on the Zaps page, each run shows up here with every step." },
+  SUCCESS: { title: "No successful runs", description: "Runs that finish every step show up here." },
+  FAILED: { title: "No failed runs", description: "Nothing has failed. Runs that hit an error show up here with the step that broke." },
+  FILTERED: { title: "No filtered runs", description: "Runs stopped by a Filter step show up here." },
+  RUNNING: { title: "Nothing running", description: "Runs in progress, including ones waiting on a Delay step, show up here." },
+  QUEUED: { title: "Nothing queued", description: "Runs waiting for a worker show up here." },
+};
 
-function ChevronDownIcon({ className = "w-4 h-4" }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-    </svg>
-  );
-}
-
-function ChevronRightIcon({ className = "w-4 h-4" }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-    </svg>
-  );
-}
-
-function RefreshIcon({ className = "w-4 h-4" }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-    </svg>
-  );
-}
-
-function CodeIcon({ className = "w-4 h-4" }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-    </svg>
-  );
-}
-
-function AlertIcon({ className = "w-4 h-4" }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-    </svg>
-  );
-}
-
-// Format absolute date timestamp with precision
-function formatAbsoluteTimestamp(dateStr) {
-  if (!dateStr) return "—";
-  const date = new Date(dateStr);
-  if (isNaN(date.getTime())) return dateStr;
-  
-  const pad = (n) => String(n).padStart(2, "0");
-  const padMs = (n) => String(n).padStart(3, "0");
-
-  const year = date.getUTCFullYear();
-  const month = pad(date.getUTCMonth() + 1);
-  const day = pad(date.getUTCDate());
-  const hours = pad(date.getUTCHours());
-  const minutes = pad(date.getUTCMinutes());
-  const seconds = pad(date.getUTCSeconds());
-  const ms = padMs(date.getUTCMilliseconds());
-
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${ms} UTC`;
-}
-
-// Calculate duration string
-function calculateDuration(startedAt, completedAt) {
-  if (!startedAt || !completedAt) return "—";
-  const start = new Date(startedAt).getTime();
-  const end = new Date(completedAt).getTime();
-  if (isNaN(start) || isNaN(end) || end < start) return "—";
-
-  const diffMs = end - start;
-  if (diffMs < 1000) {
-    return `${diffMs}ms`;
-  }
-  return `${(diffMs / 1000).toFixed(2)}s`;
-}
-
-// Status Badges component
-function RunStatusBadge({ status }) {
-  switch (status) {
-    case "SUCCESS":
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-[#c4f542]/10 border border-[#c4f542]/30 text-[#c4f542]">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#c4f542]" />
-          SUCCESS
-        </span>
-      );
-    case "FAILED":
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-red-500/10 border border-red-500/30 text-red-400">
-          <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
-          FAILED
-        </span>
-      );
-    case "FILTERED":
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-amber-500/10 border border-amber-500/30 text-amber-400">
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-          FILTERED
-        </span>
-      );
-    case "RUNNING":
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-blue-500/10 border border-blue-500/30 text-blue-400">
-          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />
-          RUNNING
-        </span>
-      );
-    case "QUEUED":
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-slate-800 border border-slate-700 text-slate-400">
-          <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
-          QUEUED
-        </span>
-      );
-    default:
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono bg-slate-800 border border-slate-700 text-slate-400">
-          {status || "UNKNOWN"}
-        </span>
-      );
-  }
-}
-
-// Step Status Badge component
-function StepStatusBadge({ status }) {
-  switch (status) {
-    case "SUCCESS":
-      return (
-        <span className="px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
-          SUCCESS
-        </span>
-      );
-    case "FAILED":
-      return (
-        <span className="px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-red-500/10 border border-red-500/30 text-red-400">
-          FAILED
-        </span>
-      );
-    case "SKIPPED":
-      return (
-        <span className="px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-purple-950/50 border border-purple-800/40 text-purple-300">
-          SKIPPED
-        </span>
-      );
-    case "RETRYING":
-      return (
-        <span className="px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-amber-500/10 border border-amber-500/30 text-amber-400">
-          RETRYING
-        </span>
-      );
-    case "RUNNING":
-      return (
-        <span className="px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-blue-500/10 border border-blue-500/30 text-blue-400 animate-pulse">
-          RUNNING
-        </span>
-      );
-    default:
-      return (
-        <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-slate-800 border border-slate-700 text-slate-400">
-          {status || "PENDING"}
-        </span>
-      );
-  }
-}
-
-// JSON Block component with toggle view
-function JsonBlock({ title, data }) {
-  const [isOpen, setIsOpen] = useState(false);
-  if (!data || (typeof data === "object" && Object.keys(data).length === 0)) {
-    return null;
-  }
-
-  const jsonString = typeof data === "string" ? data : JSON.stringify(data, null, 2);
-
-  return (
-    <div className="border border-slate-800 rounded-lg overflow-hidden bg-[#0d1117]/80">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-3 py-2 bg-slate-900/60 hover:bg-slate-800/80 text-left text-xs font-mono text-slate-300 flex items-center justify-between transition-colors"
-      >
-        <span className="flex items-center gap-1.5">
-          <CodeIcon className="w-3.5 h-3.5 text-[#c4f542]" />
-          <span>{title} Payload</span>
-        </span>
-        <span className="text-slate-500 flex items-center gap-1 text-[11px]">
-          {isOpen ? "Collapse" : "Expand JSON"}
-          {isOpen ? <ChevronDownIcon className="w-3.5 h-3.5" /> : <ChevronRightIcon className="w-3.5 h-3.5" />}
-        </span>
-      </button>
-
-      {isOpen && (
-        <pre className="p-3 text-xs font-mono text-slate-300 bg-[#0d1117] overflow-x-auto border-t border-slate-800 max-h-64 scrollbar-thin">
-          <code>{jsonString}</code>
-        </pre>
-      )}
-    </div>
-  );
+function errorMessage(err, fallback) {
+  return err instanceof TypeError ? "Can't reach the Flowline server right now." : err?.message || fallback;
 }
 
 export default function ZapRunsPage({ params }) {
-  const resolvedParams = use(params);
-  const zapId = resolvedParams.id;
-  const { isAuthenticated } = useAuthProtection();
+  const { id: zapId } = use(params);
 
   const [zap, setZap] = useState(null);
   const [runs, setRuns] = useState([]);
-  const [selectedStatus, setSelectedStatus] = useState("ALL");
-  const [isLoadingRuns, setIsLoadingRuns] = useState(true);
-  const [error, setError] = useState(null);
+  const [filter, setFilter] = useState("ALL");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
-  // Accordion state
-  const [expandedRunId, setExpandedRunId] = useState(null);
-  const [runDetails, setRunDetails] = useState({});
-  const [loadingDetails, setLoadingDetails] = useState({});
-  const [retryingRunId, setRetryingRunId] = useState(null);
-  const [retryToast, setRetryToast] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
+  const [details, setDetails] = useState({}); // runId -> { run } | { error } | { loading }
+  const [retryTarget, setRetryTarget] = useState(null);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [highlightId, setHighlightId] = useState(null);
+  const [toast, setToast] = useState(null);
+  const toastTimer = useRef(null);
 
-  // Fetch Zap details
-  useEffect(() => {
-    async function fetchZap() {
-      try {
-        const res = await authFetch(`/zaps/${zapId}`);
-        if (res.ok) {
-          const data = await res.json();
-          setZap(data.zap);
-        } else {
-          setZap({ zapName: `Zap #${zapId}` });
-        }
-      } catch (err) {
-        console.warn("Could not connect to backend server for Zap info:", err);
-        setZap({ zapName: `Zap #${zapId}` });
-      }
+  const showToast = useCallback((tone, message, ms = 5000) => {
+    clearTimeout(toastTimer.current);
+    setToast({ tone, message });
+    toastTimer.current = setTimeout(() => setToast(null), ms);
+  }, []);
+
+  const loadZap = useCallback(async () => {
+    try {
+      const res = await authFetch(`/zaps/${zapId}`);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) setZap(data.zap);
+      else if (res.status === 404) setLoadError("This Zap doesn't exist or isn't yours.");
+    } catch {
+      // The runs request reports connection problems; the header just falls back.
     }
-    if (zapId) fetchZap();
   }, [zapId]);
 
-  // Fetch Runs list (with status filter)
-  const fetchRuns = async (status = selectedStatus) => {
-    setIsLoadingRuns(true);
-    setError(null);
-
+  const loadDetail = useCallback(async (runId) => {
+    setDetails((prev) => ({ ...prev, [runId]: { ...prev[runId], loading: !prev[runId]?.run } }));
     try {
-      const url =
-        status && status !== "ALL"
-          ? `/zaps/${zapId}/runs?status=${status}`
-          : `/zaps/${zapId}/runs`;
-
-      const res = await authFetch(url);
-      const text = await res.text();
-      let data = {};
-      try {
-        data = JSON.parse(text);
-      } catch {
-        throw new Error(`Server returned non-JSON response (${res.status})`);
-      }
-
-      if (!res.ok) {
-        throw new Error(data.error || `Failed to load execution runs (${res.status})`);
-      }
-      setRuns(data.runs || []);
+      const res = await authFetch(`/zaps/${zapId}/runs/${runId}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Couldn't load this run's steps.");
+      setDetails((prev) => ({ ...prev, [runId]: { run: data.run } }));
     } catch (err) {
-      setError(err.message || "Failed to load runs");
-    } finally {
-      setIsLoadingRuns(false);
+      setDetails((prev) => ({ ...prev, [runId]: { ...prev[runId], loading: false, error: errorMessage(err, "Couldn't load this run's steps.") } }));
     }
-  };
+  }, [zapId]);
+
+  // quiet = background refresh: no skeleton, no error banner flicker.
+  const loadRuns = useCallback(async ({ quiet = false } = {}) => {
+    if (quiet) setIsRefreshing(true);
+    else setIsLoading(true);
+    try {
+      const query = filter === "ALL" ? "" : `?status=${filter}`;
+      const res = await authFetch(`/zaps/${zapId}/runs${query}`);
+      const data = await res.json().catch(() => {
+        throw new Error("Server returned an invalid response");
+      });
+      if (!res.ok) throw new Error(data.error || `Couldn't load runs (${res.status})`);
+      setRuns(data.runs || []);
+      setLoadError(null);
+    } catch (err) {
+      if (!quiet) setLoadError(errorMessage(err, "Couldn't load runs"));
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [zapId, filter]);
 
   useEffect(() => {
-    if (zapId) {
-      fetchRuns(selectedStatus);
-    }
-  }, [zapId, selectedStatus]);
+    if (!localStorage.getItem("flowline_token")) return; // AppShell redirects to /login
+    queueMicrotask(loadZap);
+    return () => clearTimeout(toastTimer.current);
+  }, [loadZap]);
 
-  // Toggle run trace expansion
-  const toggleExpand = async (runId) => {
-    if (expandedRunId === runId) {
-      setExpandedRunId(null);
-      return;
-    }
+  useEffect(() => {
+    if (!localStorage.getItem("flowline_token")) return;
+    queueMicrotask(() => loadRuns());
+  }, [loadRuns]);
 
-    setExpandedRunId(runId);
+  // While something is queued or running, refresh the list (and the open run) until it settles.
+  const hasActive = runs.some(isActive);
+  useEffect(() => {
+    if (!hasActive) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      loadRuns({ quiet: true });
+      if (expandedId) loadDetail(expandedId);
+    }, POLL_MS);
+    return () => clearInterval(timer);
+  }, [hasActive, expandedId, loadRuns, loadDetail]);
 
-    // If step executions not loaded yet, fetch trace
-    if (!runDetails[runId]) {
-      setLoadingDetails((prev) => ({ ...prev, [runId]: true }));
-      try {
-        const res = await authFetch(`/zaps/${zapId}/runs/${runId}`);
-        if (res.ok) {
-          const data = await res.json().catch(() => ({}));
-          setRunDetails((prev) => ({ ...prev, [runId]: data.run }));
-        }
-      } catch (err) {
-        console.error(`Failed to fetch run ${runId} trace:`, err);
-      } finally {
-        setLoadingDetails((prev) => ({ ...prev, [runId]: false }));
-      }
-    }
+  const toggle = (runId) => {
+    if (expandedId === runId) return setExpandedId(null);
+    setExpandedId(runId);
+    if (!details[runId]?.run) loadDetail(runId);
   };
 
-  // Retry an execution run
-  const handleRetryRun = async (runId) => {
-    setRetryingRunId(runId);
-    setRetryToast(null);
+  const confirmRetry = async () => {
+    if (!retryTarget) return;
+    setIsRetrying(true);
     try {
-      const res = await authFetch(`/zaps/${zapId}/runs/${runId}/retry`, {
-        method: "POST",
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to retry run");
-      }
-      setRetryToast({
-        type: "success",
-        message: "Run re-queued successfully! Live poller will process it.",
-      });
-      setTimeout(() => {
-        fetchRuns(selectedStatus);
-      }, 1000);
+      const res = await authFetch(`/zaps/${zapId}/runs/${retryTarget.id}/retry`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Couldn't start the retry");
+      setRetryTarget(null);
+      setFilter("ALL");
+      setHighlightId(data.runId || null);
+      showToast("success", "New run queued with the same trigger data. It's highlighted below.");
+      await loadRuns({ quiet: true });
     } catch (err) {
-      setRetryToast({ type: "error", message: err.message });
+      showToast("danger", errorMessage(err, "Couldn't start the retry"));
     } finally {
-      setRetryingRunId(null);
-      setTimeout(() => setRetryToast(null), 5000);
+      setIsRetrying(false);
     }
   };
 
-
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-[#0d1117] flex items-center justify-center font-mono text-xs text-slate-400">
-        Redirecting to login...
-      </div>
-    );
-  }
+  const trigger = zap?.trigger ? describeTrigger(zap.trigger) : null;
+  const unknownCount = runs.filter((r) => runStatusMeta(r).label === "Outcome unknown").length;
+  const empty = EMPTY_COPY[filter] || EMPTY_COPY.ALL;
 
   return (
-    <div className="min-h-screen bg-[#0d1117] text-[#e6edf3] font-sans flex flex-col selection:bg-[#c4f542]/30">
-      {/* ── Top Header Bar ── */}
-      <header className="h-16 border-b border-slate-800/80 bg-[#161b22]/90 backdrop-blur-md px-6 flex items-center justify-between sticky top-0 z-30 shadow-sm">
-        <div className="flex items-center gap-4">
-          <Link
-            href="/dashboard"
-            className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
-            title="Back to Dashboard"
-          >
-            <ArrowLeftIcon className="w-4 h-4" />
-            <span className="text-xs font-semibold uppercase tracking-wider font-mono">Dashboard</span>
+    <AppShell>
+      <PageHeader
+        back={
+          <Link href="/dashboard" className="mb-3 inline-flex items-center gap-1.5 text-sm text-ink-muted hover:text-ink">
+            <ArrowLeft className="size-4" /> Zaps
           </Link>
-          <div className="h-5 w-[1px] bg-slate-800" />
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded bg-[#c4f542]/10 border border-[#c4f542]/30 flex items-center justify-center text-[#c4f542]">
-              <ZapIcon className="w-4 h-4" />
-            </div>
-            <div>
-              <h1 className="text-base font-semibold text-white tracking-tight">
-                {zap?.zapName || "Execution History"}
-              </h1>
-              <div className="text-[11px] font-mono text-slate-400">
-                Zap ID: {zapId}
-              </div>
-            </div>
-          </div>
+        }
+        title={zap?.zapName || "Run history"}
+        description={
+          trigger ? (
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <AppIcon app={trigger.app} size="sm" />
+              <span>{trigger.appName} · {trigger.event}{trigger.detail && ` · ${trigger.detail}`}</span>
+            </span>
+          ) : (
+            "Every run of this Zap, newest first."
+          )
+        }
+        actions={
+          <>
+            <Button variant="outline" onClick={() => loadRuns({ quiet: true })} loading={isRefreshing} leftIcon={<RefreshCw className="size-4" />}>
+              Refresh
+            </Button>
+            <Button variant="secondary" href={`/zaps/${zapId}/edit`} leftIcon={<Pencil className="size-4" />}>Edit Zap</Button>
+          </>
+        }
+      />
+
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="-mx-1 max-w-full overflow-x-auto px-1">
+          <Tabs items={RUN_FILTERS} value={filter} onChange={(id) => { setFilter(id); setExpandedId(null); }} />
         </div>
+        <p className="text-xs text-ink-faint">
+          Latest 50 runs{hasActive && " · updating live"}
+        </p>
+      </div>
 
-        {/* Status Filter Dropdown & Refresh */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => fetchRuns(selectedStatus)}
-            title="Refresh runs"
-            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-          >
-            <RefreshIcon className={`w-4 h-4 ${isLoadingRuns ? "animate-spin text-[#c4f542]" : ""}`} />
-          </button>
+      {loadError && (
+        <Alert tone="danger" title="Couldn't load run history" className="mb-5">
+          {loadError}{" "}
+          <button type="button" onClick={() => loadRuns()} className="font-medium text-ink underline underline-offset-2 cursor-pointer">Try again</button>
+        </Alert>
+      )}
 
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-mono text-slate-400">Filter:</label>
-            <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-              className="bg-[#0d1117] border border-slate-700 text-white px-3 py-1.5 rounded-lg text-xs font-mono focus:border-[#c4f542] focus:ring-1 focus:ring-[#c4f542] outline-none cursor-pointer"
-            >
-              <option value="ALL">All Statuses</option>
-              <option value="SUCCESS">SUCCESS</option>
-              <option value="FAILED">FAILED</option>
-              <option value="FILTERED">FILTERED</option>
-              <option value="RUNNING">RUNNING</option>
-              <option value="QUEUED">QUEUED</option>
-            </select>
-          </div>
+      {unknownCount > 0 && (
+        <Alert tone="warning" title={`${unknownCount} run${unknownCount === 1 ? "" : "s"} with an unknown outcome`} className="mb-5">
+          Flowline stopped while a step was sending its request, so it can&apos;t tell whether the app received it.
+          It wasn&apos;t re-sent, to avoid a duplicate. Check the app first, then use Retry only if it&apos;s missing.
+        </Alert>
+      )}
+
+      {isLoading ? (
+        <div className="space-y-3">{[0, 1, 2, 3].map((i) => <RunRowSkeleton key={i} />)}</div>
+      ) : runs.length === 0 && !loadError ? (
+        <EmptyState icon={<History className="size-5" />} title={empty.title} description={empty.description} />
+      ) : (
+        <div className="space-y-3">
+          {runs.map((run) => (
+            <RunRow
+              key={run.id}
+              run={run}
+              expanded={expandedId === run.id}
+              detail={details[run.id]?.run}
+              loadingDetail={details[run.id]?.loading}
+              detailError={details[run.id]?.error}
+              highlighted={highlightId === run.id}
+              onToggle={() => toggle(run.id)}
+              onRetry={setRetryTarget}
+            />
+          ))}
         </div>
-      </header>
+      )}
 
-      {/* ── Main Runs Content Container ── */}
-      <main className="flex-1 max-w-5xl w-full mx-auto py-8 px-4 sm:px-6">
-        
-        {/* Error Banner */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-950/80 border border-red-700 rounded-xl text-sm text-red-200 flex items-center gap-3">
-            <AlertIcon className="w-5 h-5 text-red-400 shrink-0" />
-            <div>
-              <p className="font-semibold">Failed to fetch run history</p>
-              <p className="text-xs text-red-300">{error}</p>
-            </div>
-          </div>
-        )}
+      <Modal
+        open={Boolean(retryTarget)}
+        onClose={() => !isRetrying && setRetryTarget(null)}
+        title="Retry this run?"
+        description="Flowline starts a new run with the same trigger data. The original run stays in the history."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setRetryTarget(null)} disabled={isRetrying}>Cancel</Button>
+            <Button onClick={confirmRetry} loading={isRetrying}>Retry run</Button>
+          </>
+        }
+      >
+        <Alert tone="warning">
+          Every step runs again, including ones that already worked. Messages, emails or issues the
+          original run sent will be sent a second time.
+        </Alert>
+      </Modal>
 
-        {/* Retry Toast Banner */}
-        {retryToast && (
-          <div
-            className={`mb-6 p-4 rounded-xl text-sm font-mono flex items-center justify-between border ${
-              retryToast.type === "success"
-                ? "bg-green-950/60 border-green-700 text-green-200"
-                : "bg-red-950/60 border-red-700 text-red-200"
-            }`}
-          >
-            <span>{retryToast.type === "success" ? "✓ " : "✕ "}{retryToast.message}</span>
-            <button
-              onClick={() => setRetryToast(null)}
-              className="text-xs text-slate-400 hover:text-white ml-4 cursor-pointer"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        {/* Loading Spinner */}
-        {isLoadingRuns ? (
-          <div className="text-center py-20 bg-[#161b22]/40 rounded-2xl border border-slate-800">
-            <div className="inline-block animate-spin w-8 h-8 border-2 border-[#c4f542] border-t-transparent rounded-full mb-3" />
-            <p className="text-sm font-mono text-slate-400">Loading execution runs...</p>
-          </div>
-        ) : runs.length === 0 ? (
-          /* ── Empty State ── */
-          <div className="text-center py-20 px-4 bg-[#161b22]/40 rounded-2xl border border-slate-800/80 shadow-lg">
-            <div className="w-14 h-14 rounded-full bg-slate-800/80 border border-slate-700 text-slate-400 flex items-center justify-center mx-auto mb-4">
-              <ZapIcon className="w-7 h-7 text-[#c4f542]" />
-            </div>
-            <h3 className="text-base font-semibold text-white mb-1">No runs yet</h3>
-            <p className="text-xs text-slate-400 font-mono max-w-md mx-auto">
-              Trigger this Zap to see execution history here.
-            </p>
-          </div>
-        ) : (
-          /* ── Runs List ── */
-          <div className="space-y-3">
-            <div className="px-4 py-2 text-xs font-mono text-slate-400 flex items-center justify-between uppercase tracking-wider border-b border-slate-800/80">
-              <div className="flex items-center gap-8">
-                <span className="w-28">Status</span>
-                <span>Execution Time (UTC)</span>
-              </div>
-              <div className="flex items-center gap-6">
-                <span>Duration</span>
-                <span className="w-24 text-right">Actions</span>
-              </div>
-            </div>
-
-            {runs.map((run) => {
-              const isExpanded = expandedRunId === run.id;
-              const detail = runDetails[run.id];
-              const isLoadingDetail = loadingDetails[run.id];
-
-              return (
-                <div
-                  key={run.id}
-                  className={`rounded-xl border transition-all overflow-hidden ${
-                    isExpanded
-                      ? "bg-[#161b22] border-[#c4f542]/50 shadow-[0_0_20px_rgba(196,245,66,0.05)]"
-                      : "bg-[#161b22]/60 border-slate-800 hover:border-slate-700 hover:bg-[#161b22]"
-                  }`}
-                >
-                  {/* Row Header (Clickable Accordion Trigger) */}
-                  <div
-                    onClick={() => toggleExpand(run.id)}
-                    className="p-4 flex items-center justify-between cursor-pointer select-none"
-                  >
-                    <div className="flex items-center gap-6">
-                      <div className="w-28 shrink-0">
-                        <RunStatusBadge status={run.status} />
-                      </div>
-                      <div>
-                        <div className="text-xs font-mono text-slate-200 font-medium">
-                          {formatAbsoluteTimestamp(run.createdAt)}
-                        </div>
-                        <div className="text-[10px] font-mono text-slate-500">
-                          Run ID: {run.id}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                      <div className="text-xs font-mono text-slate-400">
-                        {calculateDuration(run.startedAt, run.completedAt)}
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRetryRun(run.id);
-                        }}
-                        disabled={retryingRunId === run.id}
-                        title="Re-run this execution with original trigger payload"
-                        className="px-2.5 py-1 text-xs font-mono rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 hover:border-[#c4f542]/50 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                      >
-                        {retryingRunId === run.id ? (
-                          <>
-                            <span className="w-3 h-3 border-2 border-[#c4f542] border-t-transparent rounded-full animate-spin" />
-                            <span>Retrying...</span>
-                          </>
-                        ) : (
-                          <>
-                            <RefreshIcon className="w-3.5 h-3.5 text-[#c4f542]" />
-                            <span>Retry</span>
-                          </>
-                        )}
-                      </button>
-
-                      <div className="text-slate-400 hover:text-white transition-colors">
-                        {isExpanded ? (
-                          <ChevronDownIcon className="w-5 h-5 text-[#c4f542]" />
-                        ) : (
-                          <ChevronRightIcon className="w-5 h-5" />
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Inline Expanded Step Trace Details */}
-                  {isExpanded && (
-                    <div className="p-5 border-t border-slate-800/80 bg-[#0d1117]/60 space-y-4 animate-fadeIn">
-                      
-                      {/* Trigger Payload section */}
-                      {run.triggerPayload && (
-                        <div className="mb-4">
-                          <JsonBlock title="Trigger" data={run.triggerPayload} />
-                        </div>
-                      )}
-
-                      {/* Loading Step Trace */}
-                      {isLoadingDetail ? (
-                        <div className="py-6 text-center text-xs font-mono text-slate-400 flex items-center justify-center gap-2">
-                          <div className="animate-spin w-4 h-4 border-2 border-[#c4f542] border-t-transparent rounded-full" />
-                          <span>Fetching step execution trace...</span>
-                        </div>
-                      ) : detail?.stepExecutions && detail.stepExecutions.length > 0 ? (
-                        <div className="space-y-3">
-                          <div className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">
-                            Step Execution Trace ({detail.stepExecutions.length} steps)
-                          </div>
-
-                          <div className="space-y-3 border-l-2 border-slate-800 ml-3 pl-4 pt-1">
-                            {detail.stepExecutions.map((execution, index) => (
-                              <div
-                                key={execution.id || index}
-                                className="bg-[#161b22] border border-slate-800 rounded-xl p-4 space-y-3 shadow-sm relative"
-                              >
-                                {/* Step Header */}
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2.5">
-                                    <span className="font-mono text-xs text-[#c4f542] font-semibold bg-[#c4f542]/10 px-2 py-0.5 rounded border border-[#c4f542]/20">
-                                      {execution.step?.type || "STEP"}
-                                    </span>
-                                    <span className="text-sm font-semibold text-white">
-                                      {execution.step?.name || `Step #${index + 1}`}
-                                    </span>
-                                    {execution.attempt > 1 && (
-                                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400">
-                                        Retried {execution.attempt}x
-                                      </span>
-                                    )}
-                                  </div>
-
-                                  <StepStatusBadge status={execution.status} />
-                                </div>
-
-                                {/* Step Error Box (if error exists) */}
-                                {execution.error && (
-                                  <div className="bg-red-950/40 border border-red-800/80 rounded-lg p-3 text-xs font-mono text-red-300 flex items-start gap-2">
-                                    <AlertIcon className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                                    <div className="flex-1 overflow-x-auto">
-                                      <span className="font-bold text-red-400">Error: </span>
-                                      <span>
-                                        {typeof execution.error === "object"
-                                          ? JSON.stringify(execution.error)
-                                          : execution.error}
-                                      </span>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Step Input & Output collapsible JSON blocks */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                                  <JsonBlock title="Input" data={execution.input} />
-                                  <JsonBlock title="Output" data={execution.output} />
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="py-4 text-center text-xs font-mono text-slate-500">
-                          No step executions recorded for this run.
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </main>
-    </div>
+      {toast && <Toast tone={toast.tone} onClose={() => setToast(null)}>{toast.message}</Toast>}
+    </AppShell>
   );
 }

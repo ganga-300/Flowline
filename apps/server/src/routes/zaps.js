@@ -283,6 +283,8 @@ router.get("/:id/runs",requireAuth, async (req, res) => {
       },
       orderBy: { createdAt: "desc" },
       take: 50,
+      // Just enough per step for the list to show progress and "outcome unknown".
+      include: { stepExecutions: { select: { id: true, status: true, error: true } } },
     });
 
     res.json({ runs });
