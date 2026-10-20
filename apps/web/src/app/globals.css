@@ -1,17 +1,50 @@
 @import "tailwindcss";
 
+/*
+ * Flowline design tokens (light theme). Change the look here, not in components.
+ * Utilities come from these names, e.g. bg-canvas, text-ink-muted, border-line,
+ * bg-primary, rounded-card, shadow-card, font-display.
+ */
 @theme inline {
-  --color-background: #0d1117;
-  --color-foreground: #e6edf3;
-  --color-surface: #161b22;
-  --color-surface-elevated: #1c2333;
-  --color-accent: #c4f542;
-  --color-accent-dim: rgba(196, 245, 66, 0.15);
-  --color-border: rgba(139, 148, 158, 0.2);
-  --color-muted: #8b949e;
-  --color-body: #c9d1d9;
+  /* Surfaces */
+  --color-canvas: #fbfbfa;          /* page background */
+  --color-surface: #ffffff;         /* cards, panels, inputs */
+  --color-subtle: #f4f4f2;          /* hover rows, secondary buttons, code blocks */
+  --color-line: #e7e7e4;            /* borders and dividers */
+  --color-line-strong: #d6d6d2;
+
+  /* Text */
+  --color-ink: #121316;             /* headings and body */
+  --color-ink-muted: #5f636b;       /* secondary text */
+  --color-ink-faint: #8d9098;       /* hints, placeholders */
+
+  /* Brand (one line to rebrand) */
+  --color-primary: #3a6cf4;
+  --color-primary-hover: #2f5ad6;
+  --color-primary-soft: #eaf0fe;
+
+  /* Status */
+  --color-success: #1f8a4c;
+  --color-success-soft: #e8f5ed;
+  --color-warning: #a8660b;
+  --color-warning-soft: #fdf3e2;
+  --color-danger: #c4322c;
+  --color-danger-soft: #fcebea;
+
+  /* Sky gradient used behind heroes and auth pages (references: Voiceflow, TwelveMei) */
+  --color-sky-top: #d9e6f5;
+  --color-sky-bottom: #fbfbfa;
+
+  /* Type */
   --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
-  --font-mono: var(--font-jetbrains), monospace;
+  --font-display: var(--font-instrument-serif), Georgia, "Times New Roman", serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+
+  /* Shape */
+  --radius-control: 10px;           /* buttons, inputs */
+  --radius-card: 16px;              /* cards, panels */
+  --shadow-card: 0 1px 2px rgba(18, 19, 22, 0.04), 0 1px 1px rgba(18, 19, 22, 0.02);
+  --shadow-raised: 0 8px 24px rgba(18, 19, 22, 0.08), 0 2px 6px rgba(18, 19, 22, 0.04);
 }
 
 html {
@@ -19,11 +52,26 @@ html {
 }
 
 body {
-  background: var(--color-background);
-  color: var(--color-foreground);
+  background: var(--color-canvas);
+  color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Soft sky backdrop: a calm gradient instead of a photo. */
+.bg-sky {
+  background:
+    radial-gradient(120% 70% at 50% 0%, var(--color-sky-top) 0%, transparent 70%),
+    var(--color-sky-bottom);
+}
+
+/* Display headings: serif, tight tracking (as in the references). */
+.heading-display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.02;
 }
 
 /* Scroll reveal animation */
