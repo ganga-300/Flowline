@@ -36,21 +36,43 @@ function resolvePath(context, path) {
 }
 
 // Evaluates a single condition object against the run context.
-// condition shape: { path: "trigger.message", operator: "equals", value: "hello" }
+// condition shape: { path: "trigger.issue.title", operator: "CONTAINS", value: "bug" }
+// The builder saves operators in UPPERCASE and values as text, so operators are
+// matched case-insensitively and numeric-looking values are compared as numbers.
+function toNumber(value) {
+  if (typeof value === "number") return value;
+  if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
+  return null;
+}
+
+function valuesEqual(actual, expected) {
+  if (actual === undefined || actual === null) return false;
+  const a = toNumber(actual);
+  const b = toNumber(expected);
+  if (a !== null && b !== null) return a === b;
+  return String(actual) === String(expected ?? "");
+}
+
 function evaluateCondition(context, condition) {
   const actual = resolvePath(context, condition.path);
+  const operator = String(condition.operator || "").toLowerCase();
 
-  switch (condition.operator) {
+  switch (operator) {
     case "equals":
-      return actual === condition.value;
+      return valuesEqual(actual, condition.value);
     case "not_equals":
-      return actual !== condition.value;
+      return !valuesEqual(actual, condition.value);
     case "contains":
-      return typeof actual === "string" && actual.includes(condition.value);
+      return actual !== undefined && actual !== null && String(actual).includes(String(condition.value ?? ""));
     case "greater_than":
-      return typeof actual === "number" && actual > condition.value;
-    case "less_than":
-      return typeof actual === "number" && actual < condition.value;
+    case "less_than": {
+      const a = toNumber(actual);
+      const b = toNumber(condition.value);
+      if (a === null || b === null) return false;
+      return operator === "greater_than" ? a > b : a < b;
+    }
+    case "exists":
+      return actual !== undefined && actual !== null && String(actual) !== "";
     default:
       throw new Error(`Unknown condition operator: ${condition.operator}`);
   }

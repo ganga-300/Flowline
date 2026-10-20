@@ -6,6 +6,7 @@ const { evaluateCondition, resolveTemplate } = require("./conditions");
 const { executeFormatterStep } = require("./formatter");
 const TokenBucket = require("./rateLimiter");
 const { getIntegrationHandler } = require("./integrations/registry");
+const { recordStepOutput, restoreStepOutputs } = require("./stepContext");
 const { startPollingScheduler, stopPollingScheduler, waitForPollingCycle } = require("./pollingCron");
 
 const slackBucket = new TokenBucket(5, 1); // 5 tokens capacity, 1 token/second refill
@@ -250,7 +251,7 @@ async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterS
         where: { id: stepExecution.id },
         data: { status: "SUCCESS", output: result.output },
       });
-      context.steps[step.id] = { output: result.output };
+      recordStepOutput(context, step, result.output);
     } catch (err) {
       console.error(`[worker] step ${step.id} permanently failed:`, err.message);
       await prisma.stepExecution.update({
@@ -292,9 +293,7 @@ const worker = new Worker(
       const priorExecutions = await prisma.stepExecution.findMany({
         where: { zapRunId, status: "SUCCESS" },
       });
-      for (const pe of priorExecutions) {
-        context.steps[pe.stepId] = { output: pe.output };
-      }
+      restoreStepOutputs(context, priorExecutions, allSteps);
     }
 
     await prisma.zapRun.update({

@@ -2,7 +2,7 @@ const express = require("express");
 const crypto = require("crypto");
 const router = express.Router();
 const prisma = require("../prismaClient");
-const { zapExecutionQueue } = require("../queue");
+const { zapExecutionQueue } = require("../Queue");
 
 router.post("/:token", async (req, res) => {
   const trigger = await prisma.trigger.findUnique({

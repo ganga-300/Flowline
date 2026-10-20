@@ -1,6 +1,7 @@
 const prisma = require("../../prismaClient");
 const { resolveTemplate } = require("../../conditions");
 const TokenBucket = require("../../rateLimiter");
+const { describeSlackError } = require("./errors");
 
 // Slack rate limiter: 5 messages burst capacity, 1 msg/sec refill rate
 const slackBucket = new TokenBucket(5, 1);
@@ -14,7 +15,7 @@ async function executeSlackSendMessage(step, context) {
   const config = step.config?.config || step.config || {};
   const webhookUrl = resolveTemplate(context, config.webhookUrl || "");
   const text = resolveTemplate(context, config.text || config.message || "");
-  const channel = resolveTemplate(context, config.channel || "#general");
+  const channel = resolveTemplate(context, config.channel || "").trim();
 
   let accessToken = config.token;
 
@@ -25,6 +26,10 @@ async function executeSlackSendMessage(step, context) {
     if (connection && connection.accessToken) {
       accessToken = connection.accessToken;
     }
+  }
+
+  if (!webhookUrl && !channel) {
+    throw new Error("Slack Send Message step has no channel selected. Choose a channel in the step settings.");
   }
 
   // Apply rate limiter before outbound request
@@ -62,10 +67,7 @@ async function executeSlackSendMessage(step, context) {
 
   const data = await res.json();
   if (!data.ok) {
-    if (data.error === "token_revoked" || data.error === "invalid_auth") {
-      throw new Error(`Slack authorization failed (${data.error}). Please reconnect Slack in the Connections tab.`);
-    }
-    throw new Error(`Slack API error: ${data.error}`);
+    throw new Error(describeSlackError(data.error));
   }
 
   return { output: { status: "SENT", messageId: data.ts, channel } };

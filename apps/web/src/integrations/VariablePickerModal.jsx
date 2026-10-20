@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { getStepOutputVariables } from "./stepOutputs";
+import { getIntegration, getIntegrationAction } from "./index";
 
 function formatLabel(path) {
   const parts = path.split(".");
@@ -87,7 +89,9 @@ export function VariablePickerModal({ sampleData = {}, steps = [], onSelect, onC
                 : "text-slate-400 hover:text-slate-200 border-transparent"
             }`}
           >
-            Step {idx + 1} ({s.type})
+            Step {idx + 1} ({s.config?.provider
+              ? `${getIntegration(s.config.provider)?.name || s.config.provider}: ${getIntegrationAction(s.config.provider, s.config.action)?.name || s.config.action || "?"}`
+              : s.type})
           </button>
         ))}
       </div>
@@ -127,21 +131,36 @@ export function VariablePickerModal({ sampleData = {}, steps = [], onSelect, onC
             </div>
           )
         ) : (
-          <div className="p-2 space-y-1">
-            <button
-              type="button"
-              onClick={() =>
-                onSelect({
-                  token: `{{steps.${activeTab}.output}}`,
-                  label: `Step ${activeTab} Output`,
-                  path: `steps.${activeTab}.output`,
-                })
+          <div className="space-y-1.5">
+            {(() => {
+              const step = steps.find((st) => st.id === activeTab);
+              const outputs = step ? getStepOutputVariables(step) : [];
+              if (outputs.length === 0) {
+                return (
+                  <div className="p-3 text-slate-500 text-center italic text-xs">
+                    This step has no output fields to insert.
+                  </div>
+                );
               }
-              className="w-full text-left p-2 rounded-lg bg-[#0d1117] hover:bg-[#c4f542]/10 border border-slate-800 hover:border-[#c4f542]/40 transition-all flex items-center justify-between cursor-pointer"
-            >
-              <span className="text-[#c4f542] font-medium">steps.{activeTab}.output</span>
-              <span className="text-slate-400 text-[11px]">Full Step Output</span>
-            </button>
+              return outputs.map((item) => (
+                <button
+                  key={item.path}
+                  type="button"
+                  onClick={() => onSelect({ token: item.token, label: item.label, path: item.path })}
+                  className="w-full text-left p-2 rounded-lg bg-[#0d1117] hover:bg-[#c4f542]/10 border border-slate-800 hover:border-[#c4f542]/40 transition-all flex items-center justify-between cursor-pointer"
+                >
+                  <div className="text-white font-medium text-xs flex items-center gap-2">
+                    <span className="px-1.5 py-0.5 rounded bg-[#c4f542]/20 text-[#c4f542] text-[10px] font-bold">
+                      {item.label}
+                    </span>
+                    <span className="text-slate-400 text-[11px]">{item.path}</span>
+                  </div>
+                  <span className="text-slate-400 text-[11px] truncate max-w-[120px] bg-slate-900 px-2 py-0.5 rounded">
+                    e.g. {item.value}
+                  </span>
+                </button>
+              ));
+            })()}
           </div>
         )}
       </div>

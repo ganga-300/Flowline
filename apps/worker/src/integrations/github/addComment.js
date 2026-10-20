@@ -1,5 +1,7 @@
 const prisma = require("../../prismaClient");
 const { resolveTemplate } = require("../../conditions");
+const { cleanRepoName } = require("../triggerPayloads");
+const { githubApiError } = require("./errors");
 
 /**
  * GitHub -> Add Comment Executor
@@ -25,11 +27,12 @@ async function executeGitHubAddComment(step, context) {
   }
 
   const actionConfig = step.config?.config || step.config || {};
-  const repo = resolveTemplate(context, actionConfig.repo || "").trim().replace(/^https?:\/\/github\.com\//i, "");
+  const repo = cleanRepoName(resolveTemplate(context, actionConfig.repo || ""));
   const rawIssueNumber = resolveTemplate(context, String(actionConfig.issueNumber || actionConfig.issue_number || ""));
   const body = resolveTemplate(context, actionConfig.body || actionConfig.comment || "");
 
-  const issueNumber = parseInt(rawIssueNumber, 10);
+  // Accept "7", "#7" or " 7 " (e.g. typed by hand or from a template).
+  const issueNumber = parseInt(rawIssueNumber.trim().replace(/^#/, ""), 10);
 
   if (!repo || isNaN(issueNumber)) {
     throw new Error("GitHub repository (owner/repo) and valid Issue Number are required");
@@ -51,12 +54,7 @@ async function executeGitHubAddComment(step, context) {
   });
 
   if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    const errMsg = errData.message || res.statusText || `HTTP ${res.status}`;
-    if (res.status === 401) {
-      throw new Error(`GitHub authentication failed. Please reconnect GitHub in the Connections tab.`);
-    }
-    throw new Error(`GitHub API add comment failed (${res.status}): ${errMsg}`);
+    throw await githubApiError(res, { action: "add comment", repo, issueNumber });
   }
 
   const data = await res.json();

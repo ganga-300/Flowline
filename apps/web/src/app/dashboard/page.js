@@ -62,8 +62,14 @@ export default function DashboardPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        setRunToast(`⚡ "${zap.zapName || zap.name || "Zap"}" triggered successfully! Actions are running.`);
-        setTimeout(() => setRunToast(null), 4000);
+        // Show what actually happened (new events found, nothing new, first check, or a read problem).
+        const zapLabel = zap.zapName || zap.name || "Zap";
+        setRunToast(
+          data.message
+            ? `${data.success === false ? "⚠️" : "⚡"} "${zapLabel}": ${data.message}`
+            : `⚡ "${zapLabel}" triggered. Actions are running.`
+        );
+        setTimeout(() => setRunToast(null), 6000);
       } else {
         alert(data.error || "Failed to run zap");
       }

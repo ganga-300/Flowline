@@ -47,6 +47,8 @@ router.get("/start", authMiddleware, (req, res) => {
     "users:read",
     "users:read.email",
     "chat:write.public",
+    "channels:join", // lets the "New Message" trigger join public channels it must read
+    "im:write", // lets "Send Direct Message" open a DM with the user
   ];
 
   const params = new URLSearchParams({

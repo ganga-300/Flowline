@@ -9,6 +9,7 @@ const {
   gmailMessagePayload,
   slackMessagePayload,
 } = require("../../../worker/src/integrations/triggerPayloads");
+const { fetchChannelHistory } = require("../../../worker/src/integrations/slack/channelHistory");
 
 /**
  * POST /zaps/test-step
@@ -113,7 +114,9 @@ router.post("/", requireAuth, async (req, res) => {
 
     } else if (step.type === "FILTER") {
       const { evaluateCondition } = require("../../../worker/src/conditions");
-      const passed = evaluateCondition(context, step.config?.condition || {});
+      // Published filters store { condition: {...} }; the builder panel stores the fields flat.
+      const condition = step.config?.condition || step.config || {};
+      const passed = evaluateCondition(context, condition);
       return res.json({ status: "SUCCESS", output: { passed }, error: null });
 
     } else {
@@ -340,20 +343,15 @@ router.post("/fetch-sample", requireAuth, async (req, res) => {
         return res.status(400).json({ error: "Please select a Slack channel first." });
       }
 
-      const histRes = await fetch(`https://slack.com/api/conversations.history?channel=${encodeURIComponent(channelId)}&limit=10`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-
-      if (!histRes.ok) {
-        return res.status(histRes.status).json({ error: `Slack error (${histRes.status}): Failed to read channel history.` });
+      // Same history reader as the poller (auto-joins public channels, explains private ones).
+      let history;
+      try {
+        history = await fetchChannelHistory(accessToken, channelId);
+      } catch (err) {
+        return res.status(400).json({ error: err.message });
       }
 
-      const histData = await histRes.json();
-      if (!histData.ok) {
-        return res.status(400).json({ error: `Slack error: ${histData.error || "Cannot access channel messages."}` });
-      }
-
-      const validMessages = (histData.messages || []).filter((m) => m.type === "message" && !m.subtype);
+      const validMessages = history.filter((m) => m.type === "message" && !m.subtype);
       if (validMessages.length === 0) {
         return res.status(404).json({ error: "No messages found in this channel yet. Send a message in Slack to test!" });
       }

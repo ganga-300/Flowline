@@ -42,3 +42,10 @@ test("slack start: redirects to Slack's v2 authorize page with signed state", ()
   assert.equal(url.origin + url.pathname, "https://slack.com/oauth/v2/authorize");
   assert.ok(url.searchParams.get("state"));
 });
+
+test("slack start: requests the permissions the trigger and DM action need", () => {
+  const scopes = startUrl("slack").searchParams.get("scope").split(",");
+  for (const scope of ["channels:history", "channels:join", "chat:write", "im:write", "users:read.email"]) {
+    assert.ok(scopes.includes(scope), `missing Slack scope ${scope}`);
+  }
+});

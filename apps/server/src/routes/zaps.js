@@ -3,7 +3,7 @@ const crypto = require("crypto");
 const router = express.Router();
 const prisma = require("../prismaClient");
 const requireAuth = require("../middleware/auth");
-const { zapExecutionQueue } = require("../queue");
+const { zapExecutionQueue } = require("../Queue");
 
 // GET /zaps - list all Zaps, newest first
 router.get("/",requireAuth, async (req, res) => {
@@ -258,31 +258,75 @@ router.post("/:id/run", requireAuth, async (req, res) => {
       return res.status(404).json({ error: "Zap not found" });
     }
 
-    // If Zap has a POLLING trigger (GitHub, Gmail, Slack), trigger instant real-time poll
+    // Polling triggers (GitHub, Gmail, Slack): check the provider now and report exactly
+    // what happened. Never fall through to a manual run - that would execute the actions
+    // with fake trigger data and send blank messages/issues.
     if (zap.trigger?.type === "POLLING") {
-      try {
-        const { pollSingleTrigger } = require("../../../worker/src/pollingCron");
-        const fullTrigger = await prisma.trigger.findUnique({
-          where: { id: zap.trigger.id },
-          include: { connection: true },
-        });
+      const { pollSingleTrigger } = require("../../../worker/src/pollingCron");
+      const config = zap.trigger.config || {};
+      const appName = { github: "GitHub", gmail: "Gmail", slack: "Slack" }[config.provider] || "the app";
+      const noun = config.provider === "github" ? (config.event === "new_push" ? "commit" : "issue")
+        : config.provider === "gmail" ? "email" : config.provider === "slack" ? "message" : "event";
 
-        if (fullTrigger) {
-          await pollSingleTrigger(fullTrigger);
-          const recentRun = await prisma.zapRun.findFirst({
-            where: { zapId: zap.id },
-            orderBy: { createdAt: "desc" },
-          });
-
-          return res.status(202).json({
-            success: true,
-            runId: recentRun?.id || null,
-            message: `Checked ${zap.trigger.config?.provider || "trigger"} for new events and executed live!`,
-          });
-        }
-      } catch (pollErr) {
-        console.error("[manual run] Error executing poller:", pollErr);
+      const before = await prisma.trigger.findUnique({
+        where: { id: zap.trigger.id },
+        include: { connection: true },
+      });
+      if (!before) {
+        return res.status(404).json({ error: "Trigger not found" });
       }
+      const runsBefore = await prisma.zapRun.count({ where: { zapId: zap.id } });
+
+      try {
+        await pollSingleTrigger(before);
+      } catch (pollErr) {
+        console.error("[manual run] Error executing poller:", pollErr.message);
+        return res.status(502).json({ error: `Could not check ${appName} for new ${noun}s: ${pollErr.message}` });
+      }
+
+      const after = await prisma.trigger.findUnique({ where: { id: zap.trigger.id } });
+      const newCount = (await prisma.zapRun.count({ where: { zapId: zap.id } })) - runsBefore;
+
+      if (newCount > 0) {
+        const newRuns = await prisma.zapRun.findMany({
+          where: { zapId: zap.id },
+          orderBy: { createdAt: "desc" },
+          take: newCount,
+          select: { id: true },
+        });
+        return res.status(202).json({
+          success: true,
+          newEvents: newCount,
+          runId: newRuns[0]?.id || null,
+          runIds: newRuns.map((r) => r.id),
+          message: `Found ${newCount} new ${noun}${newCount === 1 ? "" : "s"} in ${appName}. Running now.`,
+        });
+      }
+
+      if (!before.lastPollHash && after?.lastPollHash) {
+        return res.json({
+          success: true,
+          newEvents: 0,
+          runId: null,
+          message: `First check done. Flowline will run this Zap for new ${noun}s from now on - create one and click Run again.`,
+        });
+      }
+
+      if (!after?.lastPollHash) {
+        return res.json({
+          success: false,
+          newEvents: 0,
+          runId: null,
+          message: `Couldn't read any ${noun}s from ${appName} yet. Check the trigger's account and settings (the server log shows the exact error).`,
+        });
+      }
+
+      return res.json({
+        success: true,
+        newEvents: 0,
+        runId: null,
+        message: `No new ${noun}s in ${appName} since the last check.`,
+      });
     }
 
     const payload = req.body?.payload || { manual: true, triggeredAt: new Date().toISOString() };

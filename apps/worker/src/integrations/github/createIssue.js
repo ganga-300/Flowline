@@ -1,5 +1,7 @@
 const prisma = require("../../prismaClient");
 const { resolveTemplate } = require("../../conditions");
+const { cleanRepoName } = require("../triggerPayloads");
+const { githubApiError } = require("./errors");
 
 /**
  * GitHub -> Create Issue Executor
@@ -23,8 +25,8 @@ async function executeGitHubCreateIssue(step, context) {
   }
 
   const actionConfig = step.config?.config || step.config || {};
-  const repo = resolveTemplate(context, actionConfig.repo || "");
-  const title = resolveTemplate(context, actionConfig.title || "");
+  const repo = cleanRepoName(resolveTemplate(context, actionConfig.repo || ""));
+  const title = resolveTemplate(context, actionConfig.title || "").trim();
   const body = resolveTemplate(context, actionConfig.body || "");
 
   if (!repo || !title) {
@@ -46,8 +48,7 @@ async function executeGitHubCreateIssue(step, context) {
   });
 
   if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`GitHub API create issue failed (${res.status}): ${errText}`);
+    throw await githubApiError(res, { action: "create issue", repo });
   }
 
   const data = await res.json();

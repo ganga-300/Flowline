@@ -1,6 +1,7 @@
 const prisma = require("../../prismaClient");
 const { resolveTemplate } = require("../../conditions");
 const TokenBucket = require("../../rateLimiter");
+const { describeSlackError } = require("./errors");
 
 // Slack rate limiter: 5 messages burst capacity, 1 msg/sec refill rate
 const slackBucket = new TokenBucket(5, 1);
@@ -48,7 +49,10 @@ async function executeSlackSendDm(step, context) {
     if (lookupData.ok && lookupData.user?.id) {
       targetChannelId = lookupData.user.id;
     } else {
-      throw new Error(`Slack user not found for email "${userId}": ${lookupData.error || "unknown error"}`);
+      if (lookupData.error === "users_not_found") {
+        throw new Error(`No Slack user with the email "${userId}" in this workspace.`);
+      }
+      throw new Error(`Could not look up Slack user "${userId}": ${describeSlackError(lookupData.error || "unknown_error")}`);
     }
   }
 
@@ -63,7 +67,11 @@ async function executeSlackSendDm(step, context) {
   });
 
   const openData = await openRes.json();
-  const channelId = openData.ok && openData.channel?.id ? openData.channel.id : targetChannelId;
+  if (!openData.ok || !openData.channel?.id) {
+    // Don't fall back to posting somewhere else - report why the DM couldn't be opened.
+    throw new Error(`Could not open a Slack DM: ${describeSlackError(openData.error || "unknown_error")}`);
+  }
+  const channelId = openData.channel.id;
 
   // Post message to the DM channel
   const res = await fetch("https://slack.com/api/chat.postMessage", {
@@ -77,10 +85,7 @@ async function executeSlackSendDm(step, context) {
 
   const data = await res.json();
   if (!data.ok) {
-    if (data.error === "token_revoked" || data.error === "invalid_auth") {
-      throw new Error(`Slack authorization failed (${data.error}). Please reconnect Slack in the Connections tab.`);
-    }
-    throw new Error(`Slack API error: ${data.error}`);
+    throw new Error(describeSlackError(data.error));
   }
 
   return {

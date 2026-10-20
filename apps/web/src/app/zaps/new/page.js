@@ -12,6 +12,7 @@ import { GitHubRepoSelector } from "@/integrations/GitHubRepoSelector";
 import { ConnectionSelector } from "@/integrations/ConnectionSelector";
 import { getPlaceholderSample, withRepository, flattenSample } from "@/integrations/triggerVariables";
 import { validateZapForPublish } from "@/lib/zapValidation";
+import { buildSampleStepContext, getPreviousSteps } from "@/integrations/stepOutputs";
 import { saveBuilderDraft, consumeBuilderDraft, clearBuilderDraft, applyConnectionToDraft } from "@/lib/builderDraft";
 
 // ── Icons ────────────────────────────────────────────────────────────
@@ -521,7 +522,8 @@ export default function NewZapBuilderPage() {
             name: s.name || `${s.type} Step`,
             order: idx,
             ...(s.config?.connectionId && { connectionId: s.config.connectionId }),
-            config: stepConfig,
+            // ref = builder id; later steps reference this step as {{steps.<ref>.output.<field>}}
+            config: { ...stepConfig, ref: s.id },
           };
         }),
       };
@@ -950,7 +952,10 @@ export default function NewZapBuilderPage() {
                             try {
                               const stepPayload = {
                                 step: panelDraft,
-                                sampleContext: { trigger: sampleData, steps: {} },
+                                sampleContext: {
+                                  trigger: sampleData,
+                                  steps: buildSampleStepContext(getPreviousSteps(steps, activePanel?.stepId)),
+                                },
                               };
                               const res = await authFetch("/zaps/test-step", {
                                 method: "POST",
@@ -1238,7 +1243,7 @@ export default function NewZapBuilderPage() {
                       <ActionIntegrationSelector
                         config={panelDraft.config}
                         sampleData={sampleData}
-                        steps={steps}
+                        steps={getPreviousSteps(steps, activePanel?.stepId)}
                         onChange={(newConfig) =>
                           setPanelDraft({
                             ...panelDraft,
@@ -1374,7 +1379,7 @@ export default function NewZapBuilderPage() {
                         </label>
                         <input
                           type="text"
-                          placeholder="trigger.body.status"
+                          placeholder="trigger.issue.title"
                           value={panelDraft.config?.path || ""}
                           onChange={(e) =>
                             setPanelDraft({

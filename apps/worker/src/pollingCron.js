@@ -10,6 +10,7 @@ const {
   gmailMessagePayload,
   slackMessagePayload,
 } = require("./integrations/triggerPayloads");
+const { fetchChannelHistory } = require("./integrations/slack/channelHistory");
 
 const connection = new IORedis("redis://localhost:6380", {
   maxRetriesPerRequest: null,
@@ -331,20 +332,17 @@ async function pollSlackTrigger(trigger) {
     }
   }
 
-  const url = `https://slack.com/api/conversations.history?channel=${encodeURIComponent(channelId)}&limit=10`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-
-  if (!res.ok) {
-    console.log(`[polling] Slack conversations.history failed: ${res.status}`);
+  // Joins public channels automatically on not_in_channel; throws a readable error otherwise.
+  let messages;
+  try {
+    messages = await fetchChannelHistory(accessToken, channelId);
+  } catch (err) {
+    console.warn(`[polling] Slack trigger ${trigger.id}: ${err.message}`);
     return;
   }
+  if (messages.length === 0) return;
 
-  const data = await res.json().catch(() => ({}));
-  if (!data.ok || !Array.isArray(data.messages) || data.messages.length === 0) return;
-
-  const validMessages = data.messages.filter((m) => m.type === "message" && !m.subtype);
+  const validMessages = messages.filter((m) => m.type === "message" && !m.subtype);
   if (validMessages.length === 0) return;
 
   const latestMsg = validMessages[0];
