@@ -10,3 +10,4 @@ export { Select } from "./Select";
 export { Spinner } from "./Spinner";
 export { Switch } from "./Switch";
 export { Tabs } from "./Tabs";
+export { Toast } from "./Toast";

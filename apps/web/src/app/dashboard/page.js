@@ -1,382 +1,165 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Plus, Workflow } from "lucide-react";
 import { authFetch } from "@/lib/api";
-import { useAuthProtection } from "@/lib/useAuthProtection";
-
-function ZapIcon({ className = "w-5 h-5" }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-    </svg>
-  );
-}
-
-function PlusIcon({ className = "w-4 h-4" }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-    </svg>
-  );
-}
-
-function LogOutIcon({ className = "w-4 h-4" }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-    </svg>
-  );
-}
-
-function HistoryIcon({ className = "w-4 h-4" }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
-  );
-}
+import { AppShell, PageHeader } from "@/components/layout";
+import { Alert, Button, EmptyState, Modal, Toast } from "@/components/ui";
+import { ZapCard, ZapCardSkeleton } from "@/features/zaps/ZapCard";
 
 export default function DashboardPage() {
-  const router = useRouter();
-  const { isAuthenticated } = useAuthProtection();
-
   const [zaps, setZaps] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [runningZapId, setRunningZapId] = useState(null);
-  const [runToast, setRunToast] = useState(null);
+  const [toast, setToast] = useState(null); // { tone, message }
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const toastTimer = useRef(null);
 
-  const handleRunZap = async (zap) => {
+  const showToast = useCallback((tone, message, ms = 5000) => {
+    clearTimeout(toastTimer.current);
+    setToast({ tone, message });
+    toastTimer.current = setTimeout(() => setToast(null), ms);
+  }, []);
+
+  const loadZaps = useCallback(async () => {
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const res = await authFetch("/zaps");
+      const data = await res.json().catch(() => {
+        throw new Error("Server returned an invalid response");
+      });
+      if (!res.ok) throw new Error(data.error || `Failed to fetch zaps (${res.status})`);
+      setZaps(data.zaps || []);
+    } catch (err) {
+      setLoadError(err instanceof TypeError ? "Can't reach the Flowline server right now." : err.message || "Failed to load Zaps");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // Only fetch when signed in; AppShell redirects to /login otherwise.
+    if (!localStorage.getItem("flowline_token")) return;
+    queueMicrotask(loadZaps);
+    return () => clearTimeout(toastTimer.current);
+  }, [loadZaps]);
+
+  const handleRun = async (zap) => {
     setRunningZapId(zap.id);
     try {
       const res = await authFetch(`/zaps/${zap.id}/run`, {
         method: "POST",
-        body: JSON.stringify({
-          payload: {
-            triggeredBy: "user_click",
-            timestamp: new Date().toISOString(),
-          },
-        }),
+        body: JSON.stringify({ payload: { triggeredBy: "user_click", timestamp: new Date().toISOString() } }),
       });
-      const data = await res.json();
-      if (res.ok) {
-        // Show what actually happened (new events found, nothing new, first check, or a read problem).
-        const zapLabel = zap.zapName || zap.name || "Zap";
-        setRunToast(
-          data.message
-            ? `${data.success === false ? "⚠️" : "⚡"} "${zapLabel}": ${data.message}`
-            : `⚡ "${zapLabel}" triggered. Actions are running.`
-        );
-        setTimeout(() => setRunToast(null), 6000);
-      } else {
-        alert(data.error || "Failed to run zap");
-      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to run Zap");
+      // The server says what actually happened: new events, nothing new, first check, or a read problem.
+      showToast(data.success === false ? "warning" : "success", data.message || "Zap triggered. Actions are running.", 7000);
     } catch (err) {
-      alert(err.message || "Failed to trigger zap");
+      showToast("danger", err.message || "Failed to run Zap");
     } finally {
       setRunningZapId(null);
     }
   };
 
-  const handleToggleStatus = async (zap) => {
+  const handleToggle = async (zap) => {
     const nextStatus = zap.status === "ENABLED" ? "DISABLED" : "ENABLED";
     try {
-      const res = await authFetch(`/zaps/${zap.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: nextStatus }),
-      });
-      if (res.ok) {
-        setZaps((prev) =>
-          prev.map((z) => (z.id === zap.id ? { ...z, status: nextStatus } : z))
-        );
-        setRunToast(`Zap ${nextStatus === "ENABLED" ? "activated" : "paused"}`);
-        setTimeout(() => setRunToast(null), 3000);
-      } else {
+      const res = await authFetch(`/zaps/${zap.id}`, { method: "PATCH", body: JSON.stringify({ status: nextStatus }) });
+      if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        alert(data.error || "Failed to update Zap status");
+        throw new Error(data.error || "Failed to update Zap status");
       }
+      setZaps((prev) => prev.map((z) => (z.id === zap.id ? { ...z, status: nextStatus } : z)));
+      showToast("success", nextStatus === "ENABLED" ? "Zap turned on." : "Zap paused.", 3000);
     } catch (err) {
-      alert(err.message || "Failed to update Zap status");
+      showToast("danger", err.message || "Failed to update Zap status");
     }
   };
 
-  const handleDeleteZap = async (zap) => {
-    if (!window.confirm(`Delete "${zap.zapName || zap.name || "this Zap"}"? This cannot be undone.`)) {
-      return;
-    }
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
     try {
-      const res = await authFetch(`/zaps/${zap.id}`, { method: "DELETE" });
-      if (res.ok) {
-        setZaps((prev) => prev.filter((z) => z.id !== zap.id));
-        setRunToast(`Zap deleted successfully`);
-        setTimeout(() => setRunToast(null), 3000);
-      } else {
+      const res = await authFetch(`/zaps/${deleteTarget.id}`, { method: "DELETE" });
+      if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        alert(data.error || "Failed to delete Zap");
+        throw new Error(data.error || "Failed to delete Zap");
       }
+      setZaps((prev) => prev.filter((z) => z.id !== deleteTarget.id));
+      showToast("success", "Zap deleted.", 3000);
+      setDeleteTarget(null);
     } catch (err) {
-      alert(err.message || "Failed to delete Zap");
+      showToast("danger", err.message || "Failed to delete Zap");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    async function loadZaps() {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const res = await authFetch("/zaps");
-        const text = await res.text();
-        let data = {};
-        try {
-          data = JSON.parse(text);
-        } catch {
-          throw new Error("Server returned an invalid response");
-        }
-
-        if (!res.ok) {
-          throw new Error(data.error || `Failed to fetch zaps (${res.status})`);
-        }
-
-        setZaps(data.zaps || []);
-      } catch (err) {
-        setError(err.message || "Failed to load Zaps");
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    loadZaps();
-  }, [isAuthenticated]);
-
-  const handleLogout = () => {
-    localStorage.removeItem("flowline_token");
-    router.push("/login");
-  };
-
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-[#0d1117] flex items-center justify-center font-mono text-xs text-slate-400">
-        Redirecting to login...
-      </div>
-    );
-  }
+  const activeCount = zaps.filter((z) => z.status === "ENABLED").length;
 
   return (
-    <div className="min-h-screen bg-[#0d1117] text-[#e6edf3] font-sans flex flex-col selection:bg-[#c4f542]/30">
-      {/* ── Top Header Bar ── */}
-      <header className="h-16 border-b border-slate-800/80 bg-[#161b22]/90 backdrop-blur-md px-6 flex items-center justify-between sticky top-0 z-30 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#c4f542]/10 border border-[#c4f542]/30 flex items-center justify-center text-[#c4f542]">
-            <ZapIcon className="w-5 h-5" />
-          </div>
-          <span className="text-lg font-bold text-white tracking-tight">Flowline</span>
-          <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
-            DASHBOARD
-          </span>
+    <AppShell>
+      <PageHeader
+        title="Zaps"
+        description={
+          zaps.length > 0
+            ? `${zaps.length} Zap${zaps.length === 1 ? "" : "s"}, ${activeCount} on. Run them now, pause them, or see what happened.`
+            : "Your automations between GitHub, Slack and Gmail."
+        }
+        actions={<Button href="/zaps/new" leftIcon={<Plus className="size-4" />}>New Zap</Button>}
+      />
+
+      {loadError && (
+        <Alert tone="danger" title="Couldn't load your Zaps" className="mb-6">
+          {loadError}{" "}
+          <button type="button" onClick={loadZaps} className="font-medium text-ink underline underline-offset-2 cursor-pointer">Try again</button>
+        </Alert>
+      )}
+
+      {isLoading ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {[0, 1, 2].map((i) => <ZapCardSkeleton key={i} />)}
         </div>
-
-        {/* Action Buttons Top Right */}
-        <div className="flex items-center gap-3">
-          <Link
-            href="/connections"
-            className="text-xs font-mono text-slate-400 hover:text-white px-3 py-2 rounded-lg border border-slate-800 hover:border-slate-700 transition-all"
-          >
-            Connections
-          </Link>
-
-          <Link
-            href="/alerts"
-            className="text-xs font-mono text-red-400 hover:text-red-300 px-3 py-2 rounded-lg border border-red-900/50 hover:border-red-700/80 transition-all flex items-center gap-1.5"
-          >
-            <span>🔔 Alerts</span>
-          </Link>
-
-          <Link
-            href="/zaps/new"
-            className="bg-[#c4f542] hover:bg-[#b0e030] text-black font-semibold px-4 py-2 rounded-lg transition-all shadow-[0_0_15px_rgba(196,245,66,0.2)] hover:shadow-[0_0_25px_rgba(196,245,66,0.35)] flex items-center gap-2 text-xs font-mono"
-          >
-            <PlusIcon className="w-4 h-4" />
-            <span>New Zap</span>
-          </Link>
-
-          {/* Log out Button */}
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-mono text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-lg transition-all cursor-pointer"
-          >
-            <LogOutIcon className="w-4 h-4" />
-            <span>Log out</span>
-          </button>
-        </div>
-      </header>
-
-      {/* Run Success Toast */}
-      {runToast && (
-        <div className="bg-[#c4f542]/10 border-b border-[#c4f542]/30 text-[#c4f542] px-6 py-3 text-sm flex items-center justify-between font-mono animate-fadeIn">
-          <div className="flex items-center gap-2">
-            <span className="font-bold">✓ Success:</span>
-            <span>{runToast}</span>
-          </div>
-          <button
-            onClick={() => setRunToast(null)}
-            className="text-slate-400 hover:text-white"
-          >
-            ✕
-          </button>
+      ) : zaps.length === 0 && !loadError ? (
+        <EmptyState
+          icon={<Workflow className="size-5" />}
+          title="No Zaps yet"
+          description="Create your first automation: pick what starts it, then what Flowline should do next."
+          action={<Button href="/zaps/new" leftIcon={<Plus className="size-4" />}>Create a Zap</Button>}
+        />
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {zaps.map((zap) => (
+            <ZapCard
+              key={zap.id}
+              zap={zap}
+              running={runningZapId === zap.id}
+              onRun={handleRun}
+              onToggle={handleToggle}
+              onDelete={setDeleteTarget}
+            />
+          ))}
         </div>
       )}
 
-      {/* ── Main Content Container ── */}
-      <main className="flex-1 max-w-5xl w-full mx-auto py-10 px-4 sm:px-6">
-        
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Your Automation Zaps</h1>
-            <p className="text-xs font-mono text-slate-400 mt-1">
-              Manage existing workflows or build new triggers and actions
-            </p>
-          </div>
-          <Link
-            href="/zaps/new"
-            className="bg-[#161b22] hover:bg-slate-800 text-slate-200 border border-slate-700 hover:border-[#c4f542]/50 px-4 py-2.5 rounded-xl transition-all text-xs font-mono flex items-center gap-2"
-          >
-            <PlusIcon className="w-4 h-4 text-[#c4f542]" />
-            <span>Create New Zap</span>
-          </Link>
-        </div>
+      <Modal
+        open={Boolean(deleteTarget)}
+        onClose={() => !isDeleting && setDeleteTarget(null)}
+        title={`Delete "${deleteTarget?.zapName || "this Zap"}"?`}
+        description="Its run history is deleted too. This can't be undone."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>Cancel</Button>
+            <Button variant="danger" onClick={confirmDelete} loading={isDeleting}>Delete Zap</Button>
+          </>
+        }
+      />
 
-        {/* Error Alert */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-950/80 border border-red-700 rounded-xl text-xs text-red-200 font-mono">
-            <span className="font-bold">Error loading Zaps: </span>
-            <span>{error}</span>
-          </div>
-        )}
-
-        {/* Loading State */}
-        {isLoading ? (
-          <div className="text-center py-20 bg-[#161b22]/40 rounded-2xl border border-slate-800">
-            <div className="inline-block animate-spin w-8 h-8 border-2 border-[#c4f542] border-t-transparent rounded-full mb-3" />
-            <p className="text-sm font-mono text-slate-400">Loading your Zaps...</p>
-          </div>
-        ) : zaps.length === 0 ? (
-          /* Empty State */
-          <div className="text-center py-20 px-4 bg-[#161b22]/40 rounded-2xl border border-slate-800/80 shadow-lg">
-            <div className="w-14 h-14 rounded-full bg-slate-800/80 border border-slate-700 text-slate-400 flex items-center justify-center mx-auto mb-4">
-              <ZapIcon className="w-7 h-7 text-[#c4f542]" />
-            </div>
-            <h3 className="text-base font-semibold text-white mb-1">No Zaps created yet</h3>
-            <p className="text-xs font-mono text-slate-400 max-w-sm mx-auto mb-6">
-              Get started by creating your first automated Zap workflow.
-            </p>
-            <Link
-              href="/zaps/new"
-              className="inline-flex items-center gap-2 bg-[#c4f542] hover:bg-[#b0e030] text-black font-semibold px-5 py-2.5 rounded-xl text-xs font-mono shadow-[0_0_20px_rgba(196,245,66,0.2)] transition-all"
-            >
-              <PlusIcon className="w-4 h-4" />
-              <span>Create Your First Zap</span>
-            </Link>
-          </div>
-        ) : (
-          /* Zaps Grid / List */
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {zaps.map((zap) => (
-              <div
-                key={zap.id}
-                className="bg-[#161b22] border border-slate-800 hover:border-[#c4f542]/50 rounded-2xl p-6 transition-all shadow-lg flex flex-col justify-between group"
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-[#c4f542]/10 border border-[#c4f542]/30 flex items-center justify-center text-[#c4f542]">
-                        <ZapIcon className="w-4 h-4" />
-                      </div>
-                      <span className="text-xs font-mono text-slate-400">
-                        {zap.trigger?.type || "ZAP"}
-                      </span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleToggleStatus(zap)}
-                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                        zap.status === "ENABLED"
-                          ? "bg-emerald-950/60 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-900/60"
-                          : "bg-slate-800 border border-slate-700 text-slate-400 hover:text-slate-200"
-                      }`}
-                      title={zap.status === "ENABLED" ? "Click to pause this Zap" : "Click to activate this Zap"}
-                    >
-                      <span className={`w-1.5 h-1.5 rounded-full ${zap.status === "ENABLED" ? "bg-emerald-400 animate-pulse" : "bg-slate-500"}`} />
-                      <span>{zap.status === "ENABLED" ? "Active" : "Paused"}</span>
-                    </button>
-                  </div>
-
-                  <h3 className="text-base font-semibold text-white mb-4 group-hover:text-[#c4f542] transition-colors">
-                    {zap.zapName || zap.name || "Untitled Zap"}
-                  </h3>
-                </div>
-
-                <div className="pt-4 border-t border-slate-800/80 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      disabled={runningZapId === zap.id}
-                      onClick={() => handleRunZap(zap)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-mono font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-                        runningZapId === zap.id
-                          ? "bg-slate-700 text-slate-400 cursor-not-allowed"
-                          : "bg-[#c4f542]/15 text-[#c4f542] hover:bg-[#c4f542] hover:text-[#0d1117] border border-[#c4f542]/30"
-                      }`}
-                    >
-                      {runningZapId === zap.id ? (
-                        <>
-                          <span className="inline-block animate-spin">⏳</span>
-                          <span>Running...</span>
-                        </>
-                      ) : (
-                        <>
-                          <span>▶</span>
-                          <span>Run Now</span>
-                        </>
-                      )}
-                    </button>
-
-                    <Link
-                      href={`/zaps/${zap.id}/runs`}
-                      className="text-xs font-mono text-slate-400 hover:text-white flex items-center gap-1.5"
-                    >
-                      <HistoryIcon className="w-3.5 h-3.5" />
-                      <span>History</span>
-                    </Link>
-
-                    <Link
-                      href={`/zaps/${zap.id}/edit`}
-                      className="text-xs font-mono text-slate-400 hover:text-white flex items-center gap-1.5"
-                    >
-                      <span>✎</span>
-                      <span>Edit</span>
-                    </Link>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteZap(zap)}
-                    className="text-xs font-mono text-slate-500 hover:text-red-400 transition-colors p-1 cursor-pointer"
-                    title="Delete this Zap"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-      </main>
-    </div>
+      {toast && <Toast tone={toast.tone} onClose={() => setToast(null)}>{toast.message}</Toast>}
+    </AppShell>
   );
 }

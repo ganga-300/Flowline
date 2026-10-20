@@ -5,7 +5,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Bell, LayoutGrid, LogOut, Menu, Plug, Plus, X } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { Button } from "@/components/ui";
+import { Button, Spinner } from "@/components/ui";
+import { useAuthProtection } from "@/lib/useAuthProtection";
 import { Logo } from "./Logo";
 
 const NAV = [
@@ -39,10 +40,11 @@ function NavLinks({ onNavigate }) {
   );
 }
 
-/** Signed-in layout: sidebar on desktop, top bar + drawer on mobile. */
+/** Signed-in layout: sidebar on desktop, top bar + drawer on mobile. Redirects to /login if signed out. */
 export function AppShell({ children }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const { isAuthenticated } = useAuthProtection();
 
   const logout = () => {
     localStorage.removeItem("flowline_token");
@@ -64,6 +66,14 @@ export function AppShell({ children }) {
       </div>
     </div>
   );
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-canvas text-ink-faint">
+        <Spinner className="size-5" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-canvas">

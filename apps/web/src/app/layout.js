@@ -22,9 +22,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata = {
-  title: "Flowline — Async workflows, uncompromised.",
-  description:
-    "Durable orchestration for your private infrastructure. A Node.js engine you can inspect from trigger to trace.",
+  title: "Flowline",
+  description: "Automate the busywork between GitHub, Slack and Gmail.",
 };
 
 export default function RootLayout({ children }) {
