@@ -105,6 +105,17 @@ export default function ZapRunsPage({ params }) {
     queueMicrotask(() => loadRuns());
   }, [loadRuns]);
 
+  // Links from Alerts open one run: /zaps/<id>/runs?run=<runId>
+  useEffect(() => {
+    const runId = new URLSearchParams(window.location.search).get("run");
+    if (!runId || !localStorage.getItem("flowline_token")) return;
+    queueMicrotask(() => {
+      setExpandedId(runId);
+      setHighlightId(runId);
+      loadDetail(runId);
+    });
+  }, [loadDetail]);
+
   // While something is queued or running, refresh the list (and the open run) until it settles.
   const hasActive = runs.some(isActive);
   useEffect(() => {
