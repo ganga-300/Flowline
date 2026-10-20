@@ -1,4 +1,12 @@
 require("dotenv").config();
+const { checkEnv, allowedOrigins } = require("./config");
+try {
+  checkEnv("server");
+} catch (err) {
+  console.error(err.message);
+  process.exit(1);
+}
+
 const express = require("express");
 const cors = require("cors");
 const zapsRouter = require("./routes/zaps");
@@ -11,7 +19,10 @@ const optionsRouter = require("./routes/options");
 
 const app = express();
 
-app.use(cors());
+// Only the Flowline frontend(s) in FRONTEND_URL may call the API from a browser.
+// Requests without an Origin (webhooks, curl, health checks) aren't affected.
+const origins = allowedOrigins();
+app.use(cors({ origin: (origin, cb) => cb(null, !origin || origins.includes(origin)) }));
 app.use(express.json());
 
 app.use("/auth", authRouter);
@@ -24,6 +35,7 @@ app.use("/alerts", alertsRouter);
 
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 
-app.listen(4000, () => {
-  console.log("Server is running on port 4000");
+const PORT = Number(process.env.PORT) || 4000;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });

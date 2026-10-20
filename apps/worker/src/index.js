@@ -1,6 +1,13 @@
 require("dotenv").config();
+try {
+  require("../../server/src/config").checkEnv("worker");
+} catch (err) {
+  console.error(err.message);
+  process.exit(1);
+}
 const { Worker ,Queue } = require("bullmq");
 const IORedis = require("ioredis");
+const { redisUrl } = require("../../server/src/config");
 const prisma = require("./prismaClient");
 const { evaluateCondition, resolveTemplate } = require("./conditions");
 const { executeFormatterStep } = require("./formatter");
@@ -14,7 +21,7 @@ const { executeHttpRequest } = require("./integrations/http/request");
 const { startPollingScheduler, stopPollingScheduler, waitForPollingCycle } = require("./pollingCron");
 
 const slackBucket = new TokenBucket(5, 1); // 5 tokens capacity, 1 token/second refill
-const connection = new IORedis("redis://localhost:6380", {
+const connection = new IORedis(redisUrl(), {
   maxRetriesPerRequest: null,
 });
 

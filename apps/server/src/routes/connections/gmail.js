@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const router = express.Router();
 const prisma = require("../../prismaClient");
 const requireAuth = require("../../middleware/auth");
+const { allowedOrigins } = require("../../config");
 
 // Helper middleware: support token in query parameter for browser redirects
 const authMiddleware = (req, res, next) => {
@@ -72,7 +73,7 @@ router.get("/start", authMiddleware, (req, res) => {
  */
 router.get("/callback", async (req, res) => {
   const { code, state, error: googleError } = req.query;
-  const frontendAppUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+  const frontendAppUrl = allowedOrigins()[0]; // first FRONTEND_URL entry
 
   let decodedState = {};
   try {

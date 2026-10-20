@@ -2,6 +2,7 @@ require("dotenv").config();
 const crypto = require("crypto");
 const { Queue } = require("bullmq");
 const IORedis = require("ioredis");
+const { redisUrl } = require("../../server/src/config");
 const prisma = require("./prismaClient");
 const { refreshGoogleAccessToken } = require("./integrations/google/refreshToken");
 const {
@@ -14,7 +15,7 @@ const { fetchChannelHistory } = require("./integrations/slack/channelHistory");
 const { createSlackNameResolver } = require("./integrations/slack/names");
 const { createAndQueueRun } = require("./runQueue");
 
-const connection = new IORedis("redis://localhost:6380", {
+const connection = new IORedis(redisUrl(), {
   maxRetriesPerRequest: null,
 });
 

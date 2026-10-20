@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const router = express.Router();
 const prisma = require("../../prismaClient");
 const requireAuth = require("../../middleware/auth");
+const { allowedOrigins } = require("../../config");
 
 const authMiddleware = (req, res, next) => {
   if (!req.headers.authorization && req.query.token) {
@@ -67,7 +68,7 @@ router.get("/start", authMiddleware, (req, res) => {
  */
 router.get("/callback", async (req, res) => {
   const { code, state, error: slackError } = req.query;
-  const frontendAppUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+  const frontendAppUrl = allowedOrigins()[0]; // first FRONTEND_URL entry
 
   let decodedState = {};
   try {
