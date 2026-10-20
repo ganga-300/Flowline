@@ -10,6 +10,7 @@ const {
   slackMessagePayload,
 } = require("../../../worker/src/integrations/triggerPayloads");
 const { fetchChannelHistory } = require("../../../worker/src/integrations/slack/channelHistory");
+const { createSlackNameResolver } = require("../../../worker/src/integrations/slack/names");
 
 /**
  * POST /zaps/test-step
@@ -54,6 +55,13 @@ router.post("/", requireAuth, async (req, res) => {
 
         // Build a step-like object matching what the worker expects
         const connectionId = step.connectionId || step.config?.connectionId;
+        if (connectionId) {
+          // Handlers load the account by id, so check it's this user's before running anything.
+          const owned = await prisma.connection.findFirst({ where: { id: connectionId, userId: req.userId } });
+          if (!owned) {
+            return res.status(404).json({ status: "ERROR", output: null, error: "Selected account not found. Please reselect it." });
+          }
+        }
         const stepObj = {
           id: "test-step",
           config: step.config,
@@ -138,8 +146,8 @@ router.post("/", requireAuth, async (req, res) => {
  */
 router.get("/sample/:triggerId", requireAuth, async (req, res) => {
   try {
-    const trigger = await prisma.trigger.findUnique({
-      where: { id: req.params.triggerId },
+    const trigger = await prisma.trigger.findFirst({
+      where: { id: req.params.triggerId, zap: { userId: req.userId } },
       include: { zap: true },
     });
 
@@ -356,7 +364,13 @@ router.post("/fetch-sample", requireAuth, async (req, res) => {
         return res.status(404).json({ error: "No messages found in this channel yet. Send a message in Slack to test!" });
       }
 
-      return res.json({ success: true, sample: slackMessagePayload(validMessages[0], channelId) });
+      const latest = validMessages[0];
+      const names = createSlackNameResolver(accessToken);
+      const sample = slackMessagePayload(latest, channelId, {
+        userName: await names.userName(latest.user),
+        channelName: await names.channelName(channelId),
+      });
+      return res.json({ success: true, sample });
     }
 
     return res.status(400).json({ error: `Trigger provider "${provider}" does not support sample fetching.` });

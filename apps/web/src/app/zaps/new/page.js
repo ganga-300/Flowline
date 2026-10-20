@@ -1,7 +1,7 @@
 "use client";
 
 import { useState,useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { authFetch } from "@/lib/api";
 import { useAuthProtection } from "@/lib/useAuthProtection";
@@ -12,6 +12,7 @@ import { GitHubRepoSelector } from "@/integrations/GitHubRepoSelector";
 import { ConnectionSelector } from "@/integrations/ConnectionSelector";
 import { getPlaceholderSample, withRepository, flattenSample } from "@/integrations/triggerVariables";
 import { validateZapForPublish } from "@/lib/zapValidation";
+import { toZapPayload, fromSavedZap } from "@/lib/zapForm";
 import { buildSampleStepContext, getPreviousSteps } from "@/integrations/stepOutputs";
 import { saveBuilderDraft, consumeBuilderDraft, clearBuilderDraft, applyConnectionToDraft } from "@/lib/builderDraft";
 
@@ -188,6 +189,10 @@ function SlackChannelDropdown({ connectionId, value, onChange }) {
 export default function NewZapBuilderPage() {
   const router = useRouter();
   const { isAuthenticated } = useAuthProtection();
+  // Also used by /zaps/[id]/edit (re-exports this page): an id in the URL means "edit".
+  const params = useParams();
+  const zapId = params?.id || null;
+  const [isLoadingZap, setIsLoadingZap] = useState(Boolean(zapId));
 
   // ── Zap State ──
   const [zapName, setZapName] = useState("Untitled Zap");
@@ -242,8 +247,11 @@ export default function NewZapBuilderPage() {
     const errorParam = urlParams.get("error");
     const isOAuthReturn = Boolean((connected && connectionIdParam) || errorParam);
 
-    // Only a return from OAuth restores a saved draft; a normal visit starts fresh.
+    // Only a return from OAuth restores a saved draft, and only into the same Zap.
     let restored = isOAuthReturn ? consumeBuilderDraft() : null;
+    if (restored && (restored.editingZapId || null) !== zapId) {
+      restored = null;
+    }
     if (restored && connected && connectionIdParam) {
       restored = applyConnectionToDraft(restored, connected, connectionIdParam);
     }
@@ -265,20 +273,42 @@ export default function NewZapBuilderPage() {
       } else if (errorParam) {
         setPublishError(errorParam);
       }
-      setDraftRestoreDone(true);
+      if (restored || !zapId) {
+        setIsLoadingZap(false);
+        setDraftRestoreDone(true);
+      }
     });
 
     if (isOAuthReturn) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
-  }, []);
+
+    // Editing an existing Zap (and no newer draft to restore): load it from the server.
+    if (zapId && !restored) {
+      authFetch(`/zaps/${zapId}`)
+        .then(async (res) => {
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.zap) throw new Error(data.error || `Could not load this Zap (${res.status})`);
+          const loaded = fromSavedZap(data.zap);
+          setZapName(loaded.zapName);
+          setTrigger(loaded.trigger);
+          setSteps(loaded.steps);
+          setSampleData(getPlaceholderSample(loaded.trigger.config?.provider, loaded.trigger.config?.event, loaded.trigger.config?.repo));
+        })
+        .catch((err) => setPublishError(err.message))
+        .finally(() => {
+          setIsLoadingZap(false);
+          setDraftRestoreDone(true);
+        });
+    }
+  }, [zapId]);
 
   // Keep the in-progress Zap in sessionStorage so the full-page OAuth redirect
   // started by "Connect account" doesn't wipe it. Starts only after the restore check above.
   useEffect(() => {
     if (!draftRestoreDone) return;
-    saveBuilderDraft({ zapName, trigger, steps, activePanel, panelDraft, sampleData });
-  }, [draftRestoreDone, zapName, trigger, steps, activePanel, panelDraft, sampleData]);
+    saveBuilderDraft({ editingZapId: zapId, zapName, trigger, steps, activePanel, panelDraft, sampleData });
+  }, [draftRestoreDone, zapId, zapName, trigger, steps, activePanel, panelDraft, sampleData]);
 
   // Open side panel
   const openTriggerPanel = () => {
@@ -461,75 +491,11 @@ export default function NewZapBuilderPage() {
         throw new Error(validationError);
       }
 
-      // Build request body according to backend requirements
-      const payload = {
-        name: zapName.trim() || "Untitled Zap",
-        status: "ENABLED",
-        trigger: {
-          type: currentTrigger.type,
-          config: currentTrigger.config || {},
-          ...(currentTrigger.type === "POLLING" && {
-            pollIntervalSec: Number(currentTrigger.pollIntervalSec) || 300,
-          }),
-          ...((currentTrigger.connectionId || currentTrigger.config?.connectionId) && {
-            connectionId: currentTrigger.connectionId || currentTrigger.config?.connectionId,
-          }),
-        },
-        steps: currentSteps.map((s, idx) => {
-          let stepConfig = {};
-          if (s.type === "ACTION") {
-            if (s.config?.provider) {
-              stepConfig = {
-                provider: s.config.provider,
-                action: s.config.action || "",
-                ...s.config,
-              };
-            } else {
-              let parsedBody = s.config.body;
-              if (typeof s.config.body === "string" && s.config.body.trim().startsWith("{")) {
-                try {
-                  parsedBody = JSON.parse(s.config.body);
-                } catch {
-                  parsedBody = s.config.body;
-                }
-              }
-              stepConfig = {
-                url: s.config.url || "",
-                method: s.config.method || "POST",
-                body: parsedBody || {},
-              };
-            }
-          } else if (s.type === "AI") {
-            stepConfig = {
-              prompt: s.config.prompt || "",
-            };
-          } else if (s.type === "FILTER") {
-            stepConfig = {
-              condition: {
-                path: s.config.path || "",
-                operator: s.config.operator || "EQUALS",
-                value: s.config.value || "",
-              },
-            };
-          } else if (s.type === "DELAY") {
-            stepConfig = {
-              seconds: Number(s.config.seconds) || 0,
-            };
-          }
+      // Build request body (shared with editing, see lib/zapForm.js)
+      const payload = toZapPayload({ zapName, trigger: currentTrigger, steps: currentSteps });
 
-          return {
-            type: s.type,
-            name: s.name || `${s.type} Step`,
-            order: idx,
-            ...(s.config?.connectionId && { connectionId: s.config.connectionId }),
-            // ref = builder id; later steps reference this step as {{steps.<ref>.output.<field>}}
-            config: { ...stepConfig, ref: s.id },
-          };
-        }),
-      };
-
-      const res = await authFetch("/zaps", {
-        method: "POST",
+      const res = await authFetch(zapId ? `/zaps/${zapId}` : "/zaps", {
+        method: zapId ? "PUT" : "POST",
         body: JSON.stringify(payload),
       });
 
@@ -547,6 +513,14 @@ export default function NewZapBuilderPage() {
       setIsPublishing(false);
     }
   };
+
+  if (isAuthenticated && isLoadingZap) {
+    return (
+      <div className="min-h-screen bg-[#0d1117] flex items-center justify-center font-mono text-xs text-slate-400">
+        Loading Zap...
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return (
@@ -611,12 +585,12 @@ export default function NewZapBuilderPage() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                 </svg>
-                <span>Publishing...</span>
+                <span>{zapId ? "Saving..." : "Publishing..."}</span>
               </>
             ) : (
               <>
                 <ZapIcon className="w-4 h-4" />
-                <span>Publish</span>
+                <span>{zapId ? "Save changes" : "Publish"}</span>
               </>
             )}
           </button>

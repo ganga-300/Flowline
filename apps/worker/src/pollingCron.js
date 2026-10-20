@@ -11,6 +11,7 @@ const {
   slackMessagePayload,
 } = require("./integrations/triggerPayloads");
 const { fetchChannelHistory } = require("./integrations/slack/channelHistory");
+const { createSlackNameResolver } = require("./integrations/slack/names");
 
 const connection = new IORedis("redis://localhost:6380", {
   maxRetriesPerRequest: null,
@@ -370,8 +371,12 @@ async function pollSlackTrigger(trigger) {
     data: { lastPollHash: latestTs },
   });
 
+  const names = createSlackNameResolver(accessToken);
   for (const msg of newMessages.reverse()) {
-    const payload = slackMessagePayload(msg, channelId);
+    const payload = slackMessagePayload(msg, channelId, {
+      userName: await names.userName(msg.user),
+      channelName: await names.channelName(channelId),
+    });
 
     const idempotencyKey = `${trigger.id}-slack-${msg.ts}`;
     try {

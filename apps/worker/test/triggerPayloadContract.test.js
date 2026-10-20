@@ -83,6 +83,8 @@ global.fetch = async (url) => {
   if (u.includes("gmail.googleapis.com/gmail/v1/users/me/messages/m2")) return json(fixtures.gmailMessage);
   if (u.includes("gmail.googleapis.com/gmail/v1/users/me/messages")) return json(fixtures.gmailList);
   if (u.includes("slack.com/api/conversations.history")) return json(fixtures.slackHistory);
+  if (u.includes("slack.com/api/users.info")) return json({ ok: true, user: { id: "U111", name: "ana", profile: { display_name: "ana.l", real_name: "Ana Lopez" } } });
+  if (u.includes("slack.com/api/conversations.info")) return json({ ok: true, channel: { id: "C123", name: "flowline-test" } });
   throw new Error(`Unexpected fetch in test: ${u}`);
 };
 
@@ -128,7 +130,8 @@ const cases = [
     name: "Slack new_message",
     poll: () => pollOnce(poller.pollSlackTrigger, { lastPollHash: "1729400000.000100", config: { provider: "slack", channel: "C123" } }),
     sample: () => fetchSample({ provider: "slack", event: "new_message", config: { channel: "C123" }, connectionId: "conn_1" }),
-    spot: (p) => { assert.equal(p.message.text, "Deploy finished"); assert.equal(p.message.user, "U111"); assert.equal(p.message.channel, "C123"); },
+    spot: (p) => { assert.equal(p.message.text, "Deploy finished"); assert.equal(p.message.user, "U111"); assert.equal(p.message.channel, "C123");
+      assert.equal(p.message.user_name, "ana.l"); assert.equal(p.message.channel_name, "flowline-test"); },
   },
 ];
 

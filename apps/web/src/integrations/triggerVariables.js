@@ -56,7 +56,14 @@ export const PLACEHOLDER_SAMPLES = {
     },
   },
   slack_new_message: {
-    message: { text: "Hello from Slack!", user: "U012EXAMPLE", ts: "1729400000.000100", channel: "C012EXAMPLE" },
+    message: {
+      text: "Hello from Slack!",
+      user: "U012EXAMPLE",
+      user_name: "Ana Lopez",
+      ts: "1729400000.000100",
+      channel: "C012EXAMPLE",
+      channel_name: "general",
+    },
   },
   // Webhooks pass the POST body through as-is, so {{trigger.email}} etc.
   webhook_catch_hook: {
@@ -135,8 +142,8 @@ const CHIPS = {
   ],
   slack: [
     { label: "Message Text", token: "{{trigger.message.text}}" },
-    { label: "User", token: "{{trigger.message.user}}" },
-    { label: "Channel", token: "{{trigger.message.channel}}" },
+    { label: "User", token: "{{trigger.message.user_name}}" },
+    { label: "Channel", token: "{{trigger.message.channel_name}}" },
   ],
 };
 
@@ -169,9 +176,9 @@ const TEMPLATES = {
     body: "📩 New Email Received\nFrom: {{trigger.email.from}}\nSubject: {{trigger.email.subject}}\n\n{{trigger.email.body}}",
   },
   slack: {
-    subject: "New Slack message from {{trigger.message.user}}",
+    subject: "New Slack message from {{trigger.message.user_name}}",
     title: "Slack: {{trigger.message.text}}",
-    body: "💬 New Slack message in {{trigger.message.channel}} by {{trigger.message.user}}:\n{{trigger.message.text}}",
+    body: "💬 New Slack message in #{{trigger.message.channel_name}} by {{trigger.message.user_name}}:\n{{trigger.message.text}}",
   },
 };
 

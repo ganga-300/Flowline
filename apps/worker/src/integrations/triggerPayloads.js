@@ -8,7 +8,7 @@
  *   GitHub new_issue  -> { action, issue: {...}, repository: {...} }
  *   GitHub new_push   -> { action, commit: {...}, repository: {...} }
  *   Gmail new_email   -> { email: {...} }
- *   Slack new_message -> { message: {...} }
+ *   Slack new_message -> { message: { text, user, user_name, ts, channel, channel_name } }
  */
 
 function cleanRepoName(repo) {
@@ -115,14 +115,20 @@ function gmailMessagePayload(msg) {
   };
 }
 
-/** @param msg - item from conversations.history */
-function slackMessagePayload(msg, channelId) {
+/**
+ * @param msg - item from conversations.history
+ * @param names - optional { userName, channelName } from slack/names.js; ids are used if missing
+ */
+function slackMessagePayload(msg, channelId, names = {}) {
+  const user = msg.user || "unknown";
   return {
     message: {
       text: msg.text || "",
-      user: msg.user || "unknown",
+      user,
+      user_name: names.userName || user,
       ts: msg.ts,
       channel: channelId,
+      channel_name: names.channelName || channelId,
     },
   };
 }

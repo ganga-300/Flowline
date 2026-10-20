@@ -352,6 +352,14 @@ export default function DashboardPage() {
                       <HistoryIcon className="w-3.5 h-3.5" />
                       <span>History</span>
                     </Link>
+
+                    <Link
+                      href={`/zaps/${zap.id}/edit`}
+                      className="text-xs font-mono text-slate-400 hover:text-white flex items-center gap-1.5"
+                    >
+                      <span>✎</span>
+                      <span>Edit</span>
+                    </Link>
                   </div>
 
                   <button

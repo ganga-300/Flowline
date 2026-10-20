@@ -5,6 +5,28 @@ const prisma = require("../prismaClient");
 const requireAuth = require("../middleware/auth");
 const { zapExecutionQueue } = require("../Queue");
 
+// Every account referenced by the trigger or a step must belong to this user;
+// otherwise a Zap could act through someone else's Gmail/Slack/GitHub.
+async function ownsAllConnections(userId, trigger, steps) {
+  const ids = [
+    trigger?.connectionId,
+    trigger?.config?.connectionId,
+    ...(Array.isArray(steps) ? steps.flatMap((s) => [s.connectionId, s.config?.connectionId]) : []),
+  ].filter(Boolean);
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return true;
+  const owned = await prisma.connection.count({ where: { id: { in: unique }, userId } });
+  return owned === unique.length;
+}
+
+// Fields that decide WHAT a polling trigger watches. If any change, the stored
+// "last seen" marker belongs to something else and must be reset.
+function triggerWatchKey(type, config = {}, connectionId = null) {
+  return JSON.stringify([type, config.provider, config.event, config.repo, config.channel, config.query, connectionId]);
+}
+
+const ACCOUNT_ERROR = "One or more selected accounts were not found. Please reselect them in the builder.";
+
 // GET /zaps - list all Zaps, newest first
 router.get("/",requireAuth, async (req, res) => {
   const zaps = await prisma.zap.findMany({
@@ -18,8 +40,9 @@ router.get("/",requireAuth, async (req, res) => {
 
 // GET /zaps/:id - one Zap with trigger and step tree
 router.get("/:id",requireAuth, async (req, res) => {
-  const zap = await prisma.zap.findUnique({
-    where: { id: req.params.id },
+  // Only the owner's Zap: the response includes the webhook token and connection ids.
+  const zap = await prisma.zap.findFirst({
+    where: { id: req.params.id, userId: req.userId },
     include: {
       trigger: true,
       steps: {
@@ -41,6 +64,10 @@ router.post("/",requireAuth, async (req, res) => {
 
   if (!name || !trigger || !trigger.type) {
     return res.status(400).json({ error: "Name and trigger.type are required" });
+  }
+
+  if (!(await ownsAllConnections(req.userId, trigger, steps))) {
+    return res.status(400).json({ error: ACCOUNT_ERROR });
   }
 
   const webhookToken =
@@ -86,6 +113,85 @@ router.post("/",requireAuth, async (req, res) => {
   });
 
   return res.status(201).json({ zap });
+});
+
+// PUT /zaps/:id - edit a published Zap (name, trigger and steps).
+// Existing steps are updated in place by id so their run history (StepExecution rows,
+// deleted on cascade with a step) and `ref` (used by {{steps.<ref>...}}) are kept.
+router.put("/:id", requireAuth, async (req, res) => {
+  try {
+    const { name, trigger, steps = [] } = req.body;
+    if (!name || !trigger || !trigger.type) {
+      return res.status(400).json({ error: "Name and trigger.type are required" });
+    }
+
+    const existing = await prisma.zap.findFirst({
+      where: { id: req.params.id, userId: req.userId },
+      include: { trigger: true, steps: true },
+    });
+    if (!existing) {
+      return res.status(404).json({ error: "Zap not found" });
+    }
+
+    if (!(await ownsAllConnections(req.userId, trigger, steps))) {
+      return res.status(400).json({ error: ACCOUNT_ERROR });
+    }
+    const existingStepIds = new Set(existing.steps.map((st) => st.id));
+    if (steps.some((st) => st.id && !existingStepIds.has(st.id))) {
+      return res.status(400).json({ error: "A step in this request doesn't belong to this Zap." });
+    }
+
+    const connectionId = trigger.connectionId || trigger.config?.connectionId || null;
+    const old = existing.trigger;
+    const watchChanged = !old ||
+      triggerWatchKey(old.type, old.config, old.connectionId) !== triggerWatchKey(trigger.type, trigger.config, connectionId);
+    const triggerData = {
+      type: trigger.type,
+      config: trigger.config || {},
+      pollIntervalSec: trigger.pollIntervalSec ?? null,
+      connectionId: trigger.type === "POLLING" ? connectionId : null,
+      ...(watchChanged && { lastPollHash: null }),
+      ...(trigger.type === "WEBHOOK" && !old?.webhookToken && { webhookToken: crypto.randomBytes(16).toString("hex") }),
+    };
+
+    await prisma.$transaction(async (tx) => {
+      await tx.zap.update({ where: { id: existing.id }, data: { zapName: name } });
+
+      if (old) {
+        await tx.trigger.update({ where: { id: old.id }, data: triggerData });
+      } else {
+        await tx.trigger.create({ data: { zapId: existing.id, ...triggerData } });
+      }
+
+      // Remove top-level steps the user deleted (the builder only edits top-level steps).
+      const keptIds = steps.map((st) => st.id).filter(Boolean);
+      await tx.step.deleteMany({ where: { zapId: existing.id, parentStepId: null, id: { notIn: keptIds } } });
+
+      for (const st of steps) {
+        const data = {
+          type: st.type,
+          name: st.name || `${st.type} Step`,
+          config: st.config || {},
+          order: st.order,
+          connectionId: st.connectionId || st.config?.connectionId || null,
+        };
+        if (st.id) {
+          await tx.step.update({ where: { id: st.id }, data });
+        } else {
+          await tx.step.create({ data: { zapId: existing.id, ...data } });
+        }
+      }
+    });
+
+    const zap = await prisma.zap.findFirst({
+      where: { id: existing.id, userId: req.userId },
+      include: { trigger: true, steps: { orderBy: { order: "asc" } } },
+    });
+    return res.json({ zap });
+  } catch (err) {
+    console.error("Error editing zap:", err);
+    return res.status(500).json({ error: "Failed to save changes" });
+  }
 });
 
 // PATCH /zaps/:id - update name and/or status
@@ -164,6 +270,11 @@ router.get("/:id/runs",requireAuth, async (req, res) => {
   try {
     const { status } = req.query;
 
+    const zap = await prisma.zap.findFirst({ where: { id: req.params.id, userId: req.userId } });
+    if (!zap) {
+      return res.status(404).json({ error: "Zap not found" });
+    }
+
     const runs = await prisma.zapRun.findMany({
       where: {
         zapId: req.params.id,
@@ -183,8 +294,9 @@ router.get("/:id/runs",requireAuth, async (req, res) => {
 // GET /zaps/:id/runs/:runId - one run's full step-by-step trace
 router.get("/:id/runs/:runId",requireAuth, async (req, res) => {
   try {
-    const run = await prisma.zapRun.findUnique({
-      where: { id: req.params.runId },
+    // The run must belong to this Zap, and the Zap to this user.
+    const run = await prisma.zapRun.findFirst({
+      where: { id: req.params.runId, zapId: req.params.id, zap: { userId: req.userId } },
       include: {
         stepExecutions: {
           include: { step: true },
