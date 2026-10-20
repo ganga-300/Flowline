@@ -59,7 +59,10 @@ async function runWithRetry(fn, { attempts = 3, baseDelayMs = 500, sleep, onAtte
 function planRecovery(steps, executions) {
   const typeById = new Map(steps.map((s) => [s.id, s.type]));
   const reEvaluated = new Set(["DELAY", "BRANCH", "LOOP"]);
-  const completedExecutions = executions.filter((e) => e.status === "SUCCESS" && !reEvaluated.has(typeById.get(e.stepId)));
+  // A DELAY reused from an earlier run (retry from failed step) already waited there.
+  const completedExecutions = executions.filter(
+    (e) => e.status === "SUCCESS" && (!reEvaluated.has(typeById.get(e.stepId)) || (e.reusedFromRunId && typeById.get(e.stepId) === "DELAY"))
+  );
   return {
     completedStepIds: new Set(completedExecutions.map((e) => e.stepId)),
     completedExecutions,
@@ -68,4 +71,32 @@ function planRecovery(steps, executions) {
   };
 }
 
-module.exports = { isRetryable, retryableError, runWithRetry, planRecovery, RETRYABLE_STATUSES };
+/**
+ * "Retry from failed step": which results of the original run the retry reuses.
+ * Steps that succeeded there and still exist in the Zap are copied into the new run as
+ * SUCCESS (marked reusedFromRunId) and not sent again; the failed step and everything after
+ * it run normally. BRANCH/LOOP are not copied: they are re-evaluated (they send nothing)
+ * so their already-succeeded children can be skipped individually.
+ * Returns rows for prisma.stepExecution.createMany (without zapRunId).
+ */
+function planRetryCarryOver(steps, originalExecutions, originalRunId) {
+  const typeById = new Map(steps.map((s) => [s.id, s.type]));
+  const seen = new Set();
+  const rows = [];
+  for (const e of originalExecutions) {
+    const type = typeById.get(e.stepId);
+    if (e.status !== "SUCCESS" || !type || type === "BRANCH" || type === "LOOP" || seen.has(e.stepId)) continue;
+    seen.add(e.stepId);
+    rows.push({
+      stepId: e.stepId,
+      status: "SUCCESS",
+      input: e.input ?? undefined,
+      output: e.output ?? undefined,
+      // A retry of a retry points at the run where the step actually ran.
+      reusedFromRunId: e.reusedFromRunId || originalRunId,
+    });
+  }
+  return rows;
+}
+
+module.exports = { isRetryable, retryableError, runWithRetry, planRecovery, planRetryCarryOver, RETRYABLE_STATUSES };

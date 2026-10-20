@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { ChevronDown, RotateCcw } from "lucide-react";
 import { Badge, Button, Spinner } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -8,7 +9,7 @@ import { StepTrace } from "./StepTrace";
 import { formatDuration, formatFullTime, formatRelativeTime, runStatusMeta, stepProgress } from "./runStatus";
 
 /** One run in the history list. Click to expand the trigger data and step trace. */
-export function RunRow({ run, expanded, detail, loadingDetail, detailError, highlighted, onToggle, onRetry }) {
+export function RunRow({ run, zapId, expanded, detail, loadingDetail, detailError, highlighted, onToggle, onRetry }) {
   const meta = runStatusMeta(detail || run);
   const progress = stepProgress(detail || run);
   const panelId = `run-${run.id}`;
@@ -68,6 +69,14 @@ export function RunRow({ run, expanded, detail, loadingDetail, detailError, high
             <Detail label="Run ID"><span className="break-all font-mono text-xs">{run.id}</span></Detail>
           </dl>
 
+          {run.retryOfRunId && (
+            <p className="text-sm text-ink-muted">
+              Retry of{" "}
+              <Link href={`/zaps/${zapId}/runs?run=${run.retryOfRunId}`} className="font-medium text-ink underline underline-offset-2">this failed run</Link>
+              , starting from the step that failed.
+            </p>
+          )}
+
           <JsonViewer label="Trigger data" data={run.triggerPayload} />
 
           <div>
@@ -77,7 +86,7 @@ export function RunRow({ run, expanded, detail, loadingDetail, detailError, high
             ) : detailError ? (
               <p className="text-sm text-danger">{detailError}</p>
             ) : (
-              <StepTrace executions={detail?.stepExecutions} />
+              <StepTrace executions={detail?.stepExecutions} zapId={zapId} />
             )}
           </div>
         </div>

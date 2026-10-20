@@ -2,13 +2,15 @@
 
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { ArrowLeft, History, Pencil, RefreshCw } from "lucide-react";
 import { authFetch } from "@/lib/api";
 import { AppShell, PageHeader } from "@/components/layout";
-import { Alert, Button, EmptyState, Modal, Tabs, Toast } from "@/components/ui";
+import { Alert, Button, EmptyState, Tabs, Toast } from "@/components/ui";
 import { AppIcon } from "@/components/icons/AppIcon";
 import { describeTrigger } from "@/features/zaps/describeTrigger";
 import { RunRow, RunRowSkeleton } from "@/features/runs/RunRow";
+import { RetryDialog } from "@/features/runs/RetryDialog";
 import { RUN_FILTERS, isActive, runStatusMeta } from "@/features/runs/runStatus";
 
 const POLL_MS = 4000;
@@ -105,16 +107,18 @@ export default function ZapRunsPage({ params }) {
     queueMicrotask(() => loadRuns());
   }, [loadRuns]);
 
-  // Links from Alerts open one run: /zaps/<id>/runs?run=<runId>
+  // Links from Alerts and retries open one run: /zaps/<id>/runs?run=<runId>
+  const searchParams = useSearchParams();
+  const linkedRunId = searchParams.get("run");
   useEffect(() => {
-    const runId = new URLSearchParams(window.location.search).get("run");
+    const runId = linkedRunId;
     if (!runId || !localStorage.getItem("flowline_token")) return;
     queueMicrotask(() => {
       setExpandedId(runId);
       setHighlightId(runId);
       loadDetail(runId);
     });
-  }, [loadDetail]);
+  }, [linkedRunId, loadDetail]);
 
   // While something is queued or running, refresh the list (and the open run) until it settles.
   const hasActive = runs.some(isActive);
@@ -134,17 +138,17 @@ export default function ZapRunsPage({ params }) {
     if (!details[runId]?.run) loadDetail(runId);
   };
 
-  const confirmRetry = async () => {
+  const confirmRetry = async (mode) => {
     if (!retryTarget) return;
     setIsRetrying(true);
     try {
-      const res = await authFetch(`/zaps/${zapId}/runs/${retryTarget.id}/retry`, { method: "POST" });
+      const res = await authFetch(`/zaps/${zapId}/runs/${retryTarget.id}/retry`, { method: "POST", body: JSON.stringify({ mode }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Couldn't start the retry");
       setRetryTarget(null);
       setFilter("ALL");
       setHighlightId(data.runId || null);
-      showToast("success", "New run queued with the same trigger data. It's highlighted below.");
+      showToast("success", data.mode === "resume" ? "Retrying from the failed step. The new run is highlighted below." : "Running every step again. The new run is highlighted below.");
       await loadRuns({ quiet: true });
     } catch (err) {
       showToast("danger", errorMessage(err, "Couldn't start the retry"));
@@ -219,6 +223,7 @@ export default function ZapRunsPage({ params }) {
             <RunRow
               key={run.id}
               run={run}
+              zapId={zapId}
               expanded={expandedId === run.id}
               detail={details[run.id]?.run}
               loadingDetail={details[run.id]?.loading}
@@ -231,23 +236,13 @@ export default function ZapRunsPage({ params }) {
         </div>
       )}
 
-      <Modal
-        open={Boolean(retryTarget)}
-        onClose={() => !isRetrying && setRetryTarget(null)}
-        title="Retry this run?"
-        description="Flowline starts a new run with the same trigger data. The original run stays in the history."
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setRetryTarget(null)} disabled={isRetrying}>Cancel</Button>
-            <Button onClick={confirmRetry} loading={isRetrying}>Retry run</Button>
-          </>
-        }
-      >
-        <Alert tone="warning">
-          Every step runs again, including ones that already worked. Messages, emails or issues the
-          original run sent will be sent a second time.
-        </Alert>
-      </Modal>
+      <RetryDialog
+        key={retryTarget?.id || "none"}
+        run={retryTarget ? details[retryTarget.id]?.run || retryTarget : null}
+        retrying={isRetrying}
+        onCancel={() => setRetryTarget(null)}
+        onConfirm={confirmRetry}
+      />
 
       {toast && <Toast tone={toast.tone} onClose={() => setToast(null)}>{toast.message}</Toast>}
     </AppShell>

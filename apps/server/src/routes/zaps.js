@@ -319,7 +319,10 @@ router.get("/:id/runs/:runId",requireAuth, async (req, res) => {
   }
 });
 
-// POST /zaps/:id/runs/:runId/retry - re-queue a specific execution using its original triggerPayload
+// POST /zaps/:id/runs/:runId/retry - start a new run with the original triggerPayload.
+// body.mode: "resume" (default for failed runs) reuses the steps that succeeded in the
+// original run and only runs the failed step and those after it; "all" runs every step.
+// "resume" only applies to FAILED runs; any other run is always re-run in full.
 router.post("/:id/runs/:runId/retry", requireAuth, async (req, res) => {
   try {
     const zap = await prisma.zap.findFirst({
@@ -338,6 +341,12 @@ router.post("/:id/runs/:runId/retry", requireAuth, async (req, res) => {
       return res.status(404).json({ error: "Original run not found" });
     }
 
+    const requested = req.body?.mode;
+    if (requested !== undefined && requested !== "resume" && requested !== "all") {
+      return res.status(400).json({ error: 'mode must be "resume" or "all"' });
+    }
+    const mode = previousRun.status === "FAILED" && requested !== "all" ? "resume" : "all";
+
     const idempotencyKey = `${zap.id}-retry-${previousRun.id}-${Date.now()}`;
     const newRun = await prisma.zapRun.create({
       data: {
@@ -345,6 +354,7 @@ router.post("/:id/runs/:runId/retry", requireAuth, async (req, res) => {
         status: "QUEUED",
         idempotencyKey,
         triggerPayload: previousRun.triggerPayload || { retriedFrom: previousRun.id },
+        ...(mode === "resume" && { retryOfRunId: previousRun.id }),
       },
     });
 
@@ -353,7 +363,8 @@ router.post("/:id/runs/:runId/retry", requireAuth, async (req, res) => {
     return res.status(202).json({
       success: true,
       runId: newRun.id,
-      message: "Run re-queued successfully!",
+      mode,
+      message: mode === "resume" ? "Retrying from the failed step." : "Running every step again.",
     });
   } catch (err) {
     console.error("Error retrying run:", err);

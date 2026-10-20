@@ -7,6 +7,7 @@
  * moment the "provider receives" it - halfway through FAKE_PROVIDER_LATENCY_MS. A crash can
  * therefore land before the provider got the request, or after it (response lost), like in
  * production. crash-test.js counts these lines to find duplicates.
+ * FAKE_FAIL_COMMENTS_FILE: while that file exists, "add comment" fails (used by retry-test.js).
  */
 if (process.env.FAKE_PROVIDERS === "1") {
   const fs = require("fs");
@@ -25,6 +26,11 @@ if (process.env.FAKE_PROVIDERS === "1") {
     await sleep(latencyMs / 2); // request travelling to the provider
     let body = null;
     try { body = opts.body ? JSON.parse(opts.body) : null; } catch { body = opts.body; }
+    // retry-test.js: while FAKE_FAIL_COMMENTS_FILE exists, comments fail like a missing issue
+    // (404 - not retryable), so the run fails at step 2. Not logged: nothing was created.
+    if (/\/comments$/.test(u) && process.env.FAKE_FAIL_COMMENTS_FILE && fs.existsSync(process.env.FAKE_FAIL_COMMENTS_FILE)) {
+      return json(404, { message: "Not Found" });
+    }
     fs.appendFileSync(logFile, JSON.stringify({ t: Date.now(), pid: process.pid, method: opts.method || "GET", url: u, body }) + "\n");
     await sleep(latencyMs / 2); // response travelling back
 

@@ -68,3 +68,11 @@ test("object errors are shown as JSON", () => {
   assert.equal(formatError("plain"), "plain");
   assert.equal(formatError(null), "");
 });
+
+test("steps reused by 'retry from failed step' are labelled, and count as done", async () => {
+  const { retryOptions } = await import("../src/features/runs/runStatus.js");
+  assert.deepEqual(stepStatusMeta({ status: "SUCCESS", reusedFromRunId: "r1" }), { tone: "neutral", label: "Reused" });
+  assert.equal(stepProgress({ stepExecutions: [{ status: "SUCCESS", reusedFromRunId: "r1" }, { status: "SUCCESS" }] }), "2 of 2 steps done");
+  assert.deepEqual(retryOptions({ status: "FAILED" }), ["resume", "all"]);
+  assert.deepEqual(retryOptions({ status: "SUCCESS" }), ["all"]);
+});

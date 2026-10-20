@@ -58,3 +58,42 @@ test("planRecovery: a fresh run has nothing to recover", () => {
   assert.equal(plan.completedStepIds.size, 0);
   assert.equal(plan.interrupted.length, 0);
 });
+
+// ── Retry from failed step ──
+const { planRetryCarryOver } = require("../src/recovery");
+
+const zapSteps = [
+  { id: "f", type: "FILTER" }, { id: "d", type: "DELAY" }, { id: "a1", type: "ACTION" },
+  { id: "b", type: "BRANCH" }, { id: "a2", type: "ACTION" }, { id: "a3", type: "ACTION" },
+];
+
+test("retry from failed step reuses only steps that succeeded and still exist", () => {
+  const original = [
+    { stepId: "f", status: "SUCCESS", output: { passed: true } },
+    { stepId: "d", status: "SUCCESS", output: { delayedSeconds: 30 } },
+    { stepId: "a1", status: "SUCCESS", input: { text: "hi" }, output: { ts: "1.2" } },
+    { stepId: "b", status: "SUCCESS", output: { selectedStepId: "a2" } },
+    { stepId: "a2", status: "FAILED", error: "channel_not_found" },
+    { stepId: "gone", status: "SUCCESS", output: {} },
+  ];
+  const rows = planRetryCarryOver(zapSteps, original, "r1");
+  assert.deepEqual(rows.map((r) => r.stepId), ["f", "d", "a1"], "failed step, BRANCH and deleted steps are not reused");
+  assert.deepEqual(rows[2], { stepId: "a1", status: "SUCCESS", input: { text: "hi" }, output: { ts: "1.2" }, reusedFromRunId: "r1" });
+});
+
+test("an 'outcome unknown' step is not reused - retrying it is the user's decision", () => {
+  const rows = planRetryCarryOver(zapSteps, [{ stepId: "a1", status: "FAILED", error: "can't tell whether the app received it" }], "r1");
+  assert.deepEqual(rows, []);
+});
+
+test("a retry of a retry points at the run where the step really ran", () => {
+  const rows = planRetryCarryOver(zapSteps, [{ stepId: "a1", status: "SUCCESS", output: {}, reusedFromRunId: "r0" }], "r1");
+  assert.equal(rows[0].reusedFromRunId, "r0");
+});
+
+test("after a crash, a reused DELAY counts as done (no second wait); a normal DELAY is re-evaluated", () => {
+  const reused = planRecovery(zapSteps, [{ id: "e1", stepId: "d", status: "SUCCESS", reusedFromRunId: "r1" }]);
+  assert.equal(reused.completedStepIds.has("d"), true);
+  const own = planRecovery(zapSteps, [{ id: "e1", stepId: "d", status: "SUCCESS" }]);
+  assert.equal(own.completedStepIds.has("d"), false);
+});

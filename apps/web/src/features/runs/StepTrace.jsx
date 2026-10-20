@@ -1,4 +1,5 @@
-import { AlertTriangle, XCircle } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, Recycle, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui";
 import { AppIcon } from "@/components/icons/AppIcon";
 import { cn } from "@/lib/cn";
@@ -14,7 +15,7 @@ const dotTone = {
 };
 
 /** Vertical timeline of a run's step executions with errors and input/output. */
-export function StepTrace({ executions }) {
+export function StepTrace({ executions, zapId }) {
   if (!executions?.length) {
     return <p className="py-2 text-sm text-ink-muted">No steps ran. The run may have been filtered or stopped before its first step.</p>;
   }
@@ -46,6 +47,17 @@ export function StepTrace({ executions }) {
                 </div>
                 <Badge tone={meta.tone} dot>{meta.label}</Badge>
               </div>
+
+              {execution.reusedFromRunId && (
+                <p className="mt-3 flex items-start gap-2 rounded-control bg-subtle px-3 py-2.5 text-sm text-ink-muted">
+                  <Recycle className="mt-0.5 size-4 shrink-0 text-ink-faint" />
+                  <span>
+                    Done in an{" "}
+                    <Link href={`/zaps/${zapId}/runs?run=${execution.reusedFromRunId}`} className="font-medium text-ink underline underline-offset-2">earlier run</Link>
+                    , so it wasn&apos;t sent again. Its output was reused.
+                  </span>
+                </p>
+              )}
 
               {execution.error && (
                 <div

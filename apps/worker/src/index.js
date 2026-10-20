@@ -7,8 +7,9 @@ const { executeFormatterStep } = require("./formatter");
 const TokenBucket = require("./rateLimiter");
 const { getIntegrationHandler } = require("./integrations/registry");
 const { recordStepOutput, restoreStepOutputs } = require("./stepContext");
-const { runWithRetry, retryableError, planRecovery } = require("./recovery");
+const { runWithRetry, retryableError, planRecovery, planRetryCarryOver } = require("./recovery");
 const { requeueQueuedRuns } = require("./runQueue");
+const { aiPromptTemplate } = require("./aiStep");
 const { startPollingScheduler, stopPollingScheduler, waitForPollingCycle } = require("./pollingCron");
 
 const slackBucket = new TokenBucket(5, 1); // 5 tokens capacity, 1 token/second refill
@@ -52,9 +53,12 @@ async function executeActionStep(step, context) {
 }
 
 async function executeAiStep(step) {
-  const { model = "meta-llama/llama-3.1-8b-instruct:free", promptTemplate } = step.config;
+  const { model = "meta-llama/llama-3.1-8b-instruct:free" } = step.config;
+  if (!process.env.OPENROUTER_API_KEY) {
+    throw new Error("AI step needs OPENROUTER_API_KEY in the worker's environment.");
+  }
 
-  const prompt = resolveTemplate(step._context, promptTemplate);
+  const prompt = resolveTemplate(step._context, aiPromptTemplate(step.config));
 
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -314,7 +318,22 @@ const worker = new Worker(
 
     const context = { trigger: run.triggerPayload || {}, steps: {} };
 
-    // Earlier attempts of this run (a Delay resume, or a re-run after a worker crash).
+    // "Retry from failed step": on the first pass, copy the original run's successful steps
+    // into this run so they are skipped (and their outputs reused) instead of sent again.
+    // One createMany = all or nothing; after a crash the rows exist and this is skipped.
+    if (run.retryOfRunId && (await prisma.stepExecution.count({ where: { zapRunId } })) === 0) {
+      const originalExecutions = await prisma.stepExecution.findMany({
+        where: { zapRunId: run.retryOfRunId },
+        orderBy: { createdAt: "asc" },
+      });
+      const rows = planRetryCarryOver(allSteps, originalExecutions, run.retryOfRunId);
+      if (rows.length > 0) {
+        await prisma.stepExecution.createMany({ data: rows.map((r) => ({ ...r, zapRunId })) });
+      }
+    }
+
+    // Earlier attempts of this run (a Delay resume, a re-run after a worker crash, or
+    // steps reused by "Retry from failed step").
     const priorExecutions = await prisma.stepExecution.findMany({ where: { zapRunId } });
     const recovery = planRecovery(allSteps, priorExecutions);
     restoreStepOutputs(context, priorExecutions.filter((e) => e.status === "SUCCESS"), allSteps);

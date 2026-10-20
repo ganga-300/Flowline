@@ -45,6 +45,7 @@ export function runStatusMeta(run) {
 
 export function stepStatusMeta(execution) {
   if (isOutcomeUnknown(execution)) return OUTCOME_UNKNOWN;
+  if (execution?.reusedFromRunId && execution.status === "SUCCESS") return { tone: "neutral", label: "Reused" };
   return STEP_STATUS[execution?.status] || { tone: "neutral", label: execution?.status || "Pending" };
 }
 
@@ -117,4 +118,9 @@ export function describeStep(step, index = 0) {
 export function isEmptyPayload(data) {
   if (data === null || data === undefined || data === "") return true;
   return typeof data === "object" && Object.keys(data).length === 0;
+}
+
+/** Retry choices for a run: a failed run can resume from the failed step. */
+export function retryOptions(run) {
+  return run?.status === "FAILED" ? ["resume", "all"] : ["all"];
 }

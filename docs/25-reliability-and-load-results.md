@@ -60,6 +60,23 @@ Webhook -> both steps done, polled via `GET /zaps/:id/runs/:runId` with a JWT.
 Includes the 2 x 40 ms fake API time; grows with concurrency because the worker runs one
 job at a time.
 
+## 5. Retry from failed step (`apps/worker/loadtest/retry-test.js`)
+Real Postgres, Redis, server and worker; GitHub faked by `fake-providers.js`. Zap: Webhook ->
+Create Issue -> Add Comment, with comments made to fail (404) and then fixed.
+
+| Check | Result |
+|---|---|
+| Original run fails at step 2 after creating 1 issue | PASS |
+| "Retry from failed step" (default for failed runs) succeeds | PASS |
+| Issue created again | No (still 1) |
+| Comment posted | Once, on the issue from the original run |
+| Step 1 in the retry marked as reused from the original run | PASS |
+| Control: "Run all steps again" creates the issue a second time | PASS (2 issues) |
+
+How it works: the retry run stores `retryOfRunId`; on its first pass the worker copies the
+original run's successful step results into it (one `createMany`, marked `reusedFromRunId`),
+so the crash-recovery logic skips them and later steps can still use their outputs.
+
 ## How to rerun (your machine, with Postgres + Redis running)
 ```bash
 cd apps/worker
@@ -68,4 +85,8 @@ FAKE_PROVIDER_LOG=/tmp/fake.log FAKE_PROVIDER_LATENCY_MS=40 EVENTS=500 KILL_AT=2
   BENCH_FILE=bench.json node loadtest/crash-test.js          # starts/kills its own worker
 k6 run -e RATE=1000 -e WEBHOOK_TOKEN=<from bench.json> loadtest/ramp-webhooks.js   # worker stopped
 ```
+Retry test: start the worker with `FAKE_PROVIDERS=1 FAKE_PROVIDER_LOG=/tmp/fake.log
+FAKE_FAIL_COMMENTS_FILE=/tmp/fail-comments node -r ./loadtest/fake-providers.js src/index.js`, then
+`BENCH_FILE=bench.json FAKE_PROVIDER_LOG=/tmp/fake.log FAKE_FAIL_COMMENTS_FILE=/tmp/fail-comments node loadtest/retry-test.js`.
+
 Use a separate database: the tests create thousands of runs.
