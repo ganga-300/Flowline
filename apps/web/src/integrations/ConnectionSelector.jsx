@@ -101,7 +101,26 @@ export function ConnectionSelector({
             </option>
           ))}
         </select>
-      ) : (
+      ) : null}
+
+      {!isLoading && activeConnections.length > 0 && (
+        <div className="space-y-1">
+          <button
+            type="button"
+            onClick={handleConnectClick}
+            className="text-[11px] font-mono text-slate-400 hover:text-[#c4f542] hover:underline cursor-pointer"
+          >
+            + Connect another {providerName} account
+          </button>
+          {providerId === "slack" && (
+            <p className="text-[11px] text-slate-500">
+              On Slack&apos;s page, use the workspace menu (top right) to pick the workspace that has your channel.
+            </p>
+          )}
+        </div>
+      )}
+
+      {!isLoading && activeConnections.length === 0 && (
         <div className="space-y-2">
           {connectionId ? (
             <div className="flex items-center justify-between p-3 bg-[#0d1117] border border-slate-700 rounded-lg text-xs font-mono text-slate-200">

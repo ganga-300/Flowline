@@ -4,6 +4,12 @@ const { Queue } = require("bullmq");
 const IORedis = require("ioredis");
 const prisma = require("./prismaClient");
 const { refreshGoogleAccessToken } = require("./integrations/google/refreshToken");
+const {
+  githubIssuePayload,
+  githubCommitPayload,
+  gmailMessagePayload,
+  slackMessagePayload,
+} = require("./integrations/triggerPayloads");
 
 const connection = new IORedis("redis://localhost:6380", {
   maxRetriesPerRequest: null,
@@ -12,31 +18,6 @@ const connection = new IORedis("redis://localhost:6380", {
 const zapExecutionQueue = new Queue("zap-execution", { connection });
 
 const POLL_CYCLE_MS = 5 * 60 * 1000; // 5 minutes
-
-/**
- * Parses MIME body from Gmail message payload
- */
-function extractGmailBody(payload) {
-  if (!payload) return "";
-  if (payload.body && payload.body.data) {
-    return Buffer.from(payload.body.data, "base64").toString("utf-8");
-  }
-  if (Array.isArray(payload.parts)) {
-    for (const part of payload.parts) {
-      if (part.mimeType === "text/plain" && part.body && part.body.data) {
-        return Buffer.from(part.body.data, "base64").toString("utf-8");
-      }
-      if (part.mimeType === "text/html" && part.body && part.body.data) {
-        return Buffer.from(part.body.data, "base64").toString("utf-8");
-      }
-      if (part.parts) {
-        const nested = extractGmailBody(part);
-        if (nested) return nested;
-      }
-    }
-  }
-  return "";
-}
 
 /**
  * Polling handler for GitHub triggers (new_issue, new_push)
@@ -100,24 +81,7 @@ async function pollGitHubTrigger(trigger) {
     });
 
     for (const commit of newCommits.reverse()) {
-      const payload = {
-        action: "push",
-        commit: {
-          sha: commit.sha,
-          message: commit.commit?.message || "",
-          author: {
-            name: commit.commit?.author?.name || "anonymous",
-            email: commit.commit?.author?.email || "",
-            date: commit.commit?.author?.date || "",
-          },
-          html_url: commit.html_url,
-        },
-        repository: {
-          full_name: cleanRepo,
-          name: cleanRepo.split("/")[1] || cleanRepo,
-          url: `https://github.com/${cleanRepo}`,
-        },
-      };
+      const payload = githubCommitPayload(commit, cleanRepo);
 
       const idempotencyKey = `${trigger.id}-commit-${commit.sha}`;
       try {
@@ -139,76 +103,76 @@ async function pollGitHubTrigger(trigger) {
   }
 
   // Default: new_issue
-  const url = `https://api.github.com/repos/${cleanRepo}/issues?state=open&sort=created&direction=desc&per_page=10`;
-  const res = await fetch(url, { headers });
-  if (!res.ok) {
-    if (res.status === 403) {
-      console.warn(`[polling] GitHub API rate limit reached for ${cleanRepo}.`);
-    } else {
-      console.log(`[polling] GitHub fetch failed for ${cleanRepo}: ${res.status}`);
-    }
-    return;
-  }
-
-  const items = await res.json().catch(() => null);
-  if (!Array.isArray(items)) return;
-
-  const issues = items.filter((item) => !item.pull_request);
-  if (issues.length === 0) return;
-
-  const latestIssue = issues[0];
-  const latestIssueId = String(latestIssue.id);
-
-  if (!trigger.lastPollHash) {
-    console.log(`[polling] GitHub trigger ${trigger.id}: baseline at issue #${latestIssue.number}`);
-    await prisma.trigger.update({
-      where: { id: trigger.id },
-      data: { lastPollHash: latestIssueId },
-    });
-    return;
-  }
-
-  if (trigger.lastPollHash === latestIssueId) return;
-
+  const PER_PAGE = 100;
+  const MAX_PAGES = 5;
   const newIssues = [];
-  for (const issue of issues) {
-    if (String(issue.id) === trigger.lastPollHash) break;
-    newIssues.push(issue);
+  let latestIssueId = null;
+  let page = 1;
+  let foundCursor = false;
+
+  while (page <= MAX_PAGES) {
+    const url = `https://api.github.com/repos/${cleanRepo}/issues?state=all&sort=created&direction=desc&per_page=${PER_PAGE}&page=${page}`;
+    const res = await fetch(url, { headers });
+    if (!res.ok) {
+      if (res.status === 403) {
+        console.warn(`[polling] GitHub API rate limit reached for ${cleanRepo}.`);
+      } else {
+        console.log(`[polling] GitHub fetch failed for ${cleanRepo}: ${res.status}`);
+      }
+      return;
+    }
+
+    const items = await res.json().catch(() => null);
+    if (!Array.isArray(items) || items.length === 0) break;
+
+    const issues = items.filter((item) => !item.pull_request);
+
+    // 1. First poll / baseline initialization: establishes baseline at latest issue without creating runs
+    if (!trigger.lastPollHash) {
+      if (issues.length > 0) {
+        const baselineIssue = issues[0];
+        console.log(`[polling] GitHub trigger ${trigger.id}: baseline at issue #${baselineIssue.number}`);
+        await prisma.trigger.update({
+          where: { id: trigger.id },
+          data: { lastPollHash: String(baselineIssue.id) },
+        });
+      }
+      return;
+    }
+
+    if (!latestIssueId && issues.length > 0) {
+      latestIssueId = String(issues[0].id);
+      // If the latest issue is already the cursor, nothing new has arrived
+      if (trigger.lastPollHash === latestIssueId) {
+        return;
+      }
+    }
+
+    for (const issue of issues) {
+      if (String(issue.id) === trigger.lastPollHash) {
+        foundCursor = true;
+        break;
+      }
+      newIssues.push(issue);
+    }
+
+    // Stop paginating if we reached the cursor or if GitHub returned fewer items than the page limit
+    if (foundCursor || items.length < PER_PAGE) {
+      break;
+    }
+
+    page++;
   }
 
-  await prisma.trigger.update({
-    where: { id: trigger.id },
-    data: { lastPollHash: latestIssueId },
-  });
-
+  // Process detected issues in chronological order (oldest to newest)
   for (const newIssue of newIssues.reverse()) {
-    const payload = {
-      action: "opened",
-      issue: {
-        id: newIssue.id,
-        number: newIssue.number,
-        title: newIssue.title,
-        body: newIssue.body || "",
-        html_url: newIssue.html_url,
-        state: newIssue.state,
-        user: {
-          login: newIssue.user?.login || "anonymous",
-          avatar_url: newIssue.user?.avatar_url,
-          html_url: newIssue.user?.html_url,
-        },
-        created_at: newIssue.created_at,
-      },
-      repository: {
-        full_name: cleanRepo,
-        name: cleanRepo.split("/")[1] || cleanRepo,
-        owner: { login: cleanRepo.split("/")[0] || "" },
-        html_url: `https://github.com/${cleanRepo}`,
-      },
-    };
+    const payload = githubIssuePayload(newIssue, cleanRepo);
 
     const idempotencyKey = `${trigger.id}-issue-${newIssue.id}`;
+    let run = null;
+
     try {
-      const run = await prisma.zapRun.create({
+      run = await prisma.zapRun.create({
         data: {
           zapId: trigger.zapId,
           status: "QUEUED",
@@ -216,11 +180,36 @@ async function pollGitHubTrigger(trigger) {
           triggerPayload: payload,
         },
       });
-      await zapExecutionQueue.add("execute-zap-run", { zapRunId: run.id });
-      console.log(`[polling] GitHub: queued run ${run.id} for new issue #${newIssue.number}`);
     } catch (err) {
-      if (err.code !== "P2002") throw err;
+      if (err.code === "P2002") {
+        // Idempotency: ZapRun already exists from a previous attempt
+        run = await prisma.zapRun.findUnique({
+          where: { idempotencyKey },
+        });
+      } else {
+        throw err;
+      }
     }
+
+    if (!run) {
+      throw new Error(`Failed to create or locate ZapRun for issue ${newIssue.id}`);
+    }
+
+    // Enqueue if the run is still in QUEUED status
+    if (run.status === "QUEUED") {
+      await zapExecutionQueue.add(
+        "execute-zap-run",
+        { zapRunId: run.id },
+        { jobId: `zap-run-${run.id}` }
+      );
+      console.log(`[polling] GitHub: queued run ${run.id} for new issue #${newIssue.number}`);
+    }
+
+    // Advance cursor incrementally ONLY after successful persistence and queueing
+    await prisma.trigger.update({
+      where: { id: trigger.id },
+      data: { lastPollHash: String(newIssue.id) },
+    });
   }
 }
 
@@ -296,26 +285,7 @@ async function pollGmailTrigger(trigger) {
       if (!msgRes.ok) continue;
 
       const msgData = await msgRes.json();
-      const headers = msgData.payload?.headers || [];
-      const headerMap = {};
-      for (const h of headers) {
-        headerMap[h.name.toLowerCase()] = h.value;
-      }
-
-      const bodyContent = extractGmailBody(msgData.payload);
-
-      const payload = {
-        email: {
-          id: msgData.id,
-          threadId: msgData.threadId,
-          from: headerMap["from"] || "",
-          to: headerMap["to"] || "",
-          subject: headerMap["subject"] || "",
-          date: headerMap["date"] || "",
-          snippet: msgData.snippet || "",
-          body: bodyContent || msgData.snippet || "",
-        },
-      };
+      const payload = gmailMessagePayload(msgData);
 
       const idempotencyKey = `${trigger.id}-gmail-${msgData.id}`;
       const run = await prisma.zapRun.create({
@@ -328,7 +298,7 @@ async function pollGmailTrigger(trigger) {
       });
 
       await zapExecutionQueue.add("execute-zap-run", { zapRunId: run.id });
-      console.log(`[polling] Gmail: queued run ${run.id} for message "${headerMap["subject"] || msgData.id}"`);
+      console.log(`[polling] Gmail: queued run ${run.id} for message "${payload.email.subject || msgData.id}"`);
     } catch (err) {
       if (err.code !== "P2002") {
         console.error(`[polling] Error processing Gmail message ${msgSummary.id}:`, err.message);
@@ -403,14 +373,7 @@ async function pollSlackTrigger(trigger) {
   });
 
   for (const msg of newMessages.reverse()) {
-    const payload = {
-      message: {
-        text: msg.text || "",
-        user: msg.user || "unknown",
-        ts: msg.ts,
-        channel: channelId,
-      },
-    };
+    const payload = slackMessagePayload(msg, channelId);
 
     const idempotencyKey = `${trigger.id}-slack-${msg.ts}`;
     try {
@@ -536,8 +499,113 @@ async function pollSingleTrigger(trigger) {
   }
 }
 
+let isSchedulerRunning = false;
+let isCycleRunning = false;
+let schedulerTimeout = null;
+let activeCyclePromise = null;
+
+async function executeCycle() {
+  if (isCycleRunning) {
+    console.log("[polling] Previous cycle still running, skipping overlap");
+    return activeCyclePromise;
+  }
+  isCycleRunning = true;
+  activeCyclePromise = (async () => {
+    try {
+      await runPollingCycle();
+    } catch (err) {
+      console.error("[polling] Unhandled error in polling cycle:", err.message);
+    } finally {
+      isCycleRunning = false;
+      activeCyclePromise = null;
+    }
+  })();
+
+  return activeCyclePromise;
+}
+
+async function waitForPollingCycle() {
+  if (activeCyclePromise) {
+    console.log("[polling] Waiting for active polling cycle to finish...");
+    await activeCyclePromise;
+    console.log("[polling] Active polling cycle finished.");
+  }
+}
+
+function resolvePollingInterval(customIntervalMs) {
+  const MIN_INTERVAL_MS = 1000;
+  const DEFAULT_INTERVAL_MS = POLL_CYCLE_MS;
+
+  const validate = (val) => {
+    if (val === undefined || val === null) return null;
+    if (typeof val !== "number" && typeof val !== "string") return NaN;
+    if (typeof val === "string" && val.trim() === "") return null;
+    const num = Number(val);
+    return (Number.isFinite(num) && num >= MIN_INTERVAL_MS) ? num : NaN;
+  };
+
+  // 1. Explicit custom interval takes first precedence
+  if (customIntervalMs !== undefined) {
+    const custom = validate(customIntervalMs);
+    return (custom !== null && !isNaN(custom)) ? custom : DEFAULT_INTERVAL_MS;
+  }
+
+  // 2. POLL_CYCLE_MS from environment
+  if (process.env.POLL_CYCLE_MS !== undefined) {
+    const envCycle = validate(process.env.POLL_CYCLE_MS);
+    if (envCycle !== null) {
+      return !isNaN(envCycle) ? envCycle : DEFAULT_INTERVAL_MS;
+    }
+  }
+
+  // 3. POLL_INTERVAL_MS from environment
+  if (process.env.POLL_INTERVAL_MS !== undefined) {
+    const envInterval = validate(process.env.POLL_INTERVAL_MS);
+    if (envInterval !== null) {
+      return !isNaN(envInterval) ? envInterval : DEFAULT_INTERVAL_MS;
+    }
+  }
+
+  // 4. Default fallback (5 minutes)
+  return DEFAULT_INTERVAL_MS;
+}
+
+async function startPollingScheduler(customIntervalMs) {
+  if (isSchedulerRunning) {
+    console.log("[polling] Polling scheduler is already running in this process.");
+    return;
+  }
+  isSchedulerRunning = true;
+
+  const interval = resolvePollingInterval(customIntervalMs);
+  console.log(`[polling] Polling cron engine started (interval: ${Math.round(interval / 1000)}s)`);
+
+  const scheduleNext = () => {
+    if (!isSchedulerRunning) return;
+    schedulerTimeout = setTimeout(async () => {
+      await executeCycle();
+      scheduleNext();
+    }, interval);
+    if (schedulerTimeout.unref) schedulerTimeout.unref();
+  };
+
+  // Run first cycle immediately, then schedule subsequent cycles without overlap
+  executeCycle().finally(() => {
+    scheduleNext();
+  });
+}
+
+function stopPollingScheduler() {
+  isSchedulerRunning = false;
+  if (schedulerTimeout) {
+    clearTimeout(schedulerTimeout);
+    schedulerTimeout = null;
+  }
+  console.log("[polling] Polling scheduler stopped.");
+}
+
 if (require.main === module) {
-  start();
+  startPollingScheduler();
 }
 
 module.exports = {
@@ -546,4 +614,8 @@ module.exports = {
   pollGmailTrigger,
   pollSlackTrigger,
   pollSingleTrigger,
+  startPollingScheduler,
+  stopPollingScheduler,
+  resolvePollingInterval,
+  waitForPollingCycle,
 };

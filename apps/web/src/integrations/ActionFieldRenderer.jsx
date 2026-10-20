@@ -4,85 +4,7 @@ import { useEffect, useState } from "react";
 import { PillInput } from "./PillInput";
 import { VariablePickerModal } from "./VariablePickerModal";
 import { authFetch } from "@/lib/api";
-
-function getTriggerType(sampleData) {
-  if (sampleData?.issue || sampleData?.body?.number || sampleData?.body?.repo || sampleData?.body?.user_login) {
-    return "github";
-  }
-  if (sampleData?.email || sampleData?.body?.from || sampleData?.body?.date) {
-    return "gmail";
-  }
-  if (sampleData?.message || sampleData?.body?.ts) {
-    return "slack";
-  }
-  return "generic";
-}
-
-// ── Helper to generate a pre-formatted default message based on the trigger ──
-function getSmartTemplate(sampleData, fieldKey) {
-  const triggerType = getTriggerType(sampleData);
-
-  if (fieldKey === "subject") {
-    if (triggerType === "github") return "🚨 New GitHub Issue: {{issue.title}}";
-    if (triggerType === "gmail") return "Fwd: {{email.subject}}";
-    if (triggerType === "slack") return "New Slack Notification from {{message.user}}";
-    return "New Flowline Notification";
-  }
-
-  if (fieldKey === "text" || fieldKey === "body" || fieldKey === "message") {
-    if (triggerType === "github") {
-      return "🚨 New GitHub Issue #{{issue.number}}: {{issue.title}}\n\nAuthor: {{issue.user_login}}\nView issue: {{issue.html_url}}";
-    }
-    if (triggerType === "gmail") {
-      return "📩 New Email Received\nFrom: {{email.from}}\nSubject: {{email.subject}}\n\n{{email.body}}";
-    }
-    if (triggerType === "slack") {
-      return "💬 New Slack message in {{message.channel}} by {{message.user}}:\n{{message.text}}";
-    }
-    return "Notification received:\n{{message}}";
-  }
-
-  return "";
-}
-
-// ── Helper to extract 1-click variable chips from the active trigger ──
-function getQuickChips(sampleData) {
-  const triggerType = getTriggerType(sampleData);
-
-  if (triggerType === "github") {
-    return [
-      { label: "Issue Title", token: "{{issue.title}}" },
-      { label: "Issue URL", token: "{{issue.html_url}}" },
-      { label: "Issue #", token: "{{issue.number}}" },
-      { label: "Author", token: "{{issue.user_login}}" },
-      { label: "Repository", token: "{{repository.full_name}}" },
-    ];
-  }
-  if (triggerType === "gmail") {
-    return [
-      { label: "Subject", token: "{{email.subject}}" },
-      { label: "Sender", token: "{{email.from}}" },
-      { label: "Email Body", token: "{{email.body}}" },
-      { label: "Date", token: "{{email.date}}" },
-    ];
-  }
-  if (triggerType === "slack") {
-    return [
-      { label: "Message Text", token: "{{message.text}}" },
-      { label: "User", token: "{{message.user}}" },
-      { label: "Channel", token: "{{message.channel}}" },
-    ];
-  }
-
-  if (sampleData?.body && typeof sampleData.body === "object") {
-    return Object.keys(sampleData.body).slice(0, 5).map((k) => ({
-      label: k.replace(/_/g, " "),
-      token: `{{${k}}}`,
-    }));
-  }
-
-  return [];
-}
+import { getQuickChips, getSmartTemplate } from "./triggerVariables";
 
 /**
  * Generic Field Renderer for Integration Action & Trigger Form Fields
@@ -93,12 +15,13 @@ export function ActionFieldRenderer({ field, providerId, value, connectionId, sa
   const [showPicker, setShowPicker] = useState(false);
   const [dynamicOptions, setDynamicOptions] = useState([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
+  const [optionsError, setOptionsError] = useState(null);
 
   // Default templates are ONLY for messaging actions (Slack and Gmail)
   const isMessagingAction = providerId === "slack" || providerId === "gmail";
   const isTemplatableField =
     (type === "text" || type === "textarea" || type === "pill_input") &&
-    (key === "text" || key === "body" || key === "message" || key === "subject");
+    (key === "text" || key === "body" || key === "message" || key === "subject" || key === "title");
 
   const quickChips = isTemplatableField ? getQuickChips(sampleData) : [];
   const suggestedTemplate = (isMessagingAction && isTemplatableField) ? getSmartTemplate(sampleData, key) : "";
@@ -112,11 +35,19 @@ export function ActionFieldRenderer({ field, providerId, value, connectionId, sa
   const loadDynamicOptions = async () => {
     try {
       setLoadingOptions(true);
+      setOptionsError(null);
       const res = await authFetch(`/connections/${connectionId}/options?type=${optionsType}`);
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setDynamicOptions([]);
+        setOptionsError(data.error || `Could not load choices (HTTP ${res.status})`);
+        return;
+      }
       setDynamicOptions(data.options || []);
     } catch (err) {
       console.error("Failed to load options", err);
+      setDynamicOptions([]);
+      setOptionsError("Could not reach the Flowline server to load choices.");
     } finally {
       setLoadingOptions(false);
     }
@@ -203,8 +134,14 @@ export function ActionFieldRenderer({ field, providerId, value, connectionId, sa
           disabled={dynamic && loadingOptions}
           className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3.5 py-2.5 text-xs text-white font-mono focus:border-[#c4f542] outline-none disabled:opacity-50"
         >
-          <option value="">{dynamic && loadingOptions ? "Loading Choices..." : "Select an option..."}</option>
-          {(dynamic && dynamicOptions.length > 0 ? dynamicOptions : staticOptions || []).map((opt) => (
+          <option value="">
+            {dynamic && !connectionId
+              ? "Select an account above first"
+              : dynamic && loadingOptions
+                ? "Loading Choices..."
+                : "Select an option..."}
+          </option>
+          {(dynamic ? dynamicOptions : staticOptions || []).map((opt) => (
             <option key={opt.value || opt} value={opt.value || opt}>
               {opt.label || opt}
             </option>
@@ -264,6 +201,10 @@ export function ActionFieldRenderer({ field, providerId, value, connectionId, sa
           onSelect={handleSelectVariable}
           onClose={() => setShowPicker(false)}
         />
+      )}
+
+      {(dynamic || type === "dynamic_dropdown") && optionsError && (
+        <p className="text-[11px] text-red-400 mt-1 font-sans">{optionsError}</p>
       )}
 
       {description && (

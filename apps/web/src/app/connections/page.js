@@ -79,6 +79,24 @@ export default function ConnectionsPage() {
   const [connections, setConnections] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  // Result of an OAuth round trip: the server redirects back here with ?connected=... or ?error=...
+  const [oauthResult, setOauthResult] = useState(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get("connected");
+    const oauthError = params.get("error");
+    if (!connected && !oauthError) return;
+    queueMicrotask(() => {
+      setOauthResult(
+        oauthError
+          ? { type: "error", message: oauthError }
+          : { type: "success", message: `${connected.charAt(0).toUpperCase()}${connected.slice(1)} account connected.` }
+      );
+    });
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -234,6 +252,25 @@ export default function ConnectionsPage() {
             </button>
           </div>
         </div>
+
+        {/* OAuth result (from the provider redirect) */}
+        {oauthResult && (
+          <div
+            className={`mb-6 p-4 rounded-xl text-xs font-mono flex items-start justify-between gap-3 ${
+              oauthResult.type === "error"
+                ? "bg-red-950/80 border border-red-700 text-red-200"
+                : "bg-green-950/60 border border-green-700 text-green-200"
+            }`}
+          >
+            <span>
+              {oauthResult.type === "error" && <span className="font-bold">Connection failed: </span>}
+              {oauthResult.message}
+            </span>
+            <button type="button" onClick={() => setOauthResult(null)} className="opacity-70 hover:opacity-100 cursor-pointer">
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Error Alert */}
         {error && (

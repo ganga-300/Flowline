@@ -6,6 +6,7 @@ const { evaluateCondition, resolveTemplate } = require("./conditions");
 const { executeFormatterStep } = require("./formatter");
 const TokenBucket = require("./rateLimiter");
 const { getIntegrationHandler } = require("./integrations/registry");
+const { startPollingScheduler, stopPollingScheduler, waitForPollingCycle } = require("./pollingCron");
 
 const slackBucket = new TokenBucket(5, 1); // 5 tokens capacity, 1 token/second refill
 const connection = new IORedis("redis://localhost:6380", {
@@ -351,3 +352,126 @@ const worker = new Worker(
 worker.on("error", (err) => console.error("[worker] connection error:", err));
 
 console.log("Worker started, listening for jobs...");
+
+// Automatically start background polling engine alongside the worker
+startPollingScheduler();
+
+const DEFAULT_SHUTDOWN_TIMEOUT_MS = 15000;
+const MIN_SHUTDOWN_TIMEOUT_MS = 1000;
+
+function resolveShutdownTimeout(customTimeoutMs) {
+  const raw = customTimeoutMs !== undefined
+    ? customTimeoutMs
+    : process.env.WORKER_SHUTDOWN_TIMEOUT_MS;
+
+  if (raw === undefined || raw === null) return DEFAULT_SHUTDOWN_TIMEOUT_MS;
+  if (typeof raw === "string" && raw.trim() === "") return DEFAULT_SHUTDOWN_TIMEOUT_MS;
+
+  const parsed = typeof raw === "number" ? raw : Number(raw);
+  if (Number.isFinite(parsed) && parsed >= MIN_SHUTDOWN_TIMEOUT_MS) {
+    return parsed;
+  }
+  return DEFAULT_SHUTDOWN_TIMEOUT_MS;
+}
+
+let isShuttingDown = false;
+let shutdownWatchdog = null;
+
+async function handleShutdown(signal) {
+  if (isShuttingDown) {
+    console.log(`[worker] Shutdown already in progress, ignoring duplicate ${signal}`);
+    return;
+  }
+  isShuttingDown = true;
+  console.log(`[worker] Received ${signal}, starting graceful shutdown...`);
+
+  // Start bounded shutdown watchdog
+  const timeoutMs = resolveShutdownTimeout();
+  shutdownWatchdog = setTimeout(() => {
+    console.error(`[worker] Shutdown watchdog timeout reached (${timeoutMs}ms). Forcing exit.`);
+    process.exit(1);
+  }, timeoutMs);
+  if (shutdownWatchdog.unref) shutdownWatchdog.unref();
+
+  let hasError = false;
+
+  // 1. Stop background polling scheduler
+  try {
+    stopPollingScheduler();
+  } catch (err) {
+    hasError = true;
+    console.error("[worker] Error stopping polling scheduler:", err.message);
+  }
+
+  // 2. Await in-flight polling cycle (if any) before closing connections
+  try {
+    console.log("[worker] Awaiting active polling cycle (if any)...");
+    await waitForPollingCycle();
+    console.log("[worker] Polling cycle settled.");
+  } catch (err) {
+    hasError = true;
+    console.error("[worker] Error waiting for polling cycle to settle:", err.message);
+  }
+
+  // 3. Close BullMQ worker (waits for active in-flight jobs to complete)
+  try {
+    console.log("[worker] Closing BullMQ worker...");
+    await worker.close();
+    console.log("[worker] BullMQ worker closed.");
+  } catch (err) {
+    hasError = true;
+    console.error("[worker] Error closing BullMQ worker:", err.message);
+  }
+
+  // 4. Close BullMQ queue
+  try {
+    console.log("[worker] Closing BullMQ queue...");
+    await zapExecutionQueue.close();
+    console.log("[worker] BullMQ queue closed.");
+  } catch (err) {
+    hasError = true;
+    console.error("[worker] Error closing BullMQ queue:", err.message);
+  }
+
+  // 5. Close Redis connection
+  try {
+    console.log("[worker] Closing Redis connection...");
+    await connection.quit();
+    console.log("[worker] Redis connection closed.");
+  } catch (err) {
+    hasError = true;
+    console.error("[worker] Error closing Redis connection:", err.message);
+  }
+
+  // 6. Disconnect Prisma client
+  try {
+    console.log("[worker] Disconnecting Prisma client...");
+    await prisma.$disconnect();
+    console.log("[worker] Prisma disconnected.");
+  } catch (err) {
+    hasError = true;
+    console.error("[worker] Error disconnecting Prisma client:", err.message);
+  }
+
+  // Clear watchdog before exiting
+  if (shutdownWatchdog) {
+    clearTimeout(shutdownWatchdog);
+    shutdownWatchdog = null;
+  }
+
+  if (hasError) {
+    console.error("[worker] Graceful shutdown completed with errors.");
+    process.exit(1);
+  } else {
+    console.log("[worker] Graceful shutdown completed successfully.");
+    process.exit(0);
+  }
+}
+
+process.on("SIGTERM", () => handleShutdown("SIGTERM"));
+process.on("SIGINT", () => handleShutdown("SIGINT"));
+
+module.exports = {
+  handleShutdown,
+  resolveShutdownTimeout,
+};

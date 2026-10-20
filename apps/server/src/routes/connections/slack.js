@@ -64,6 +64,9 @@ router.get("/start", authMiddleware, (req, res) => {
  * Handles Slack OAuth 2.0 callback
  */
 router.get("/callback", async (req, res) => {
+  const { code, state, error: slackError } = req.query;
+  const frontendAppUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+
   let decodedState = {};
   try {
     if (state) {
@@ -104,6 +107,8 @@ router.get("/callback", async (req, res) => {
     const tokenData = await tokenRes.json();
 
     if (!tokenData.ok) {
+      // Log Slack's error code only (never tokens) so failed installs are diagnosable.
+      console.warn(`[Slack OAuth] oauth.v2.access failed: ${tokenData.error || `HTTP ${tokenRes.status}`}`);
       return res.redirect(`${frontendAppUrl}${returnUrl}${redirectSep}error=${encodeURIComponent(tokenData.error || "Slack token exchange failed")}`);
     }
 

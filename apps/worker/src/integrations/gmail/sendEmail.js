@@ -15,32 +15,45 @@ function base64urlEncode(str) {
     .replace(/=+$/, "");
 }
 
+// Header values come from templates (e.g. an email subject or Slack text), so strip
+// CR/LF to prevent header injection and encode non-ASCII text (RFC 2047).
+function headerValue(value) {
+  return String(value ?? "").replace(/[\r\n]+/g, " ").trim();
+}
+
+function encodeHeaderText(value) {
+  const clean = headerValue(value);
+  return /^[\x20-\x7E]*$/.test(clean) ? clean : `=?UTF-8?B?${Buffer.from(clean, "utf-8").toString("base64")}?=`;
+}
+
+function addressList(value) {
+  const items = Array.isArray(value) ? value : String(value ?? "").split(",");
+  return items.map(headerValue).filter(Boolean).join(", ");
+}
+
+const looksLikeHtml = (text) => /<\/?[a-z][a-z0-9]*(\s[^>]*)?\/?>/i.test(text);
+
 /**
- * Builds an RFC 2822 formatted MIME message string
- * @param {Object} params
- * @param {string} params.to
- * @param {string} params.subject
- * @param {string} params.body
- * @returns {string} RFC 2822 MIME message
+ * Builds an RFC 2822 formatted MIME message string.
+ * Plain-text bodies are sent as text/plain so template line breaks survive;
+ * bodies containing HTML tags are sent as text/html. Bodies are base64 encoded (UTF-8).
  */
 function buildMimeMessage({ to, cc, bcc, subject, body, from }) {
+  const text = String(body ?? "");
   const messageParts = [
-    `To: ${to}`,
-    `Subject: ${subject}`,
-    "Content-Type: text/html; charset=utf-8",
+    `To: ${addressList(to)}`,
+    `Subject: ${encodeHeaderText(subject)}`,
     "MIME-Version: 1.0",
+    `Content-Type: ${looksLikeHtml(text) ? "text/html" : "text/plain"}; charset=utf-8`,
+    "Content-Transfer-Encoding: base64",
   ];
-  if (from) {
-    messageParts.push(`From: ${from}`);
-  }
-  if (cc) {
-    messageParts.push(`Cc: ${Array.isArray(cc) ? cc.join(", ") : cc}`);
-  }
-  if (bcc) {
-    messageParts.push(`Bcc: ${Array.isArray(bcc) ? bcc.join(", ") : bcc}`);
-  }
+  if (from) messageParts.push(`From: ${headerValue(from)}`);
+  const ccList = addressList(cc);
+  if (ccList) messageParts.push(`Cc: ${ccList}`);
+  const bccList = addressList(bcc);
+  if (bccList) messageParts.push(`Bcc: ${bccList}`);
   messageParts.push("");
-  messageParts.push(body);
+  messageParts.push(Buffer.from(text, "utf-8").toString("base64").replace(/.{76}/g, "$&\r\n"));
   return messageParts.join("\r\n");
 }
 
@@ -73,10 +86,11 @@ async function executeGmailSendEmail(step, context) {
   const rawTo = actionConfig.to || "";
   const rawSubject = actionConfig.subject || "";
   const rawBody = actionConfig.body || "";
-  const cc = actionConfig.cc;
-  const bcc = actionConfig.bcc;
+  const resolveList = (v) => (Array.isArray(v) ? v.map((x) => resolveTemplate(context, x)) : resolveTemplate(context, v || ""));
+  const cc = resolveList(actionConfig.cc);
+  const bcc = resolveList(actionConfig.bcc);
 
-  const to = resolveTemplate(context, rawTo);
+  const to = addressList(resolveTemplate(context, rawTo));
   const subject = resolveTemplate(context, rawSubject);
   const body = resolveTemplate(context, rawBody);
 

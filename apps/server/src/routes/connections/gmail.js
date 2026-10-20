@@ -56,7 +56,9 @@ router.get("/start", authMiddleware, (req, res) => {
     response_type: "code",
     scope: scopes.join(" "),
     access_type: "offline",
-    prompt: "consent",
+    // select_account: let the user pick which Google account to connect.
+    // consent: required so Google returns a refresh token on every connect.
+    prompt: "select_account consent",
     state: stateToken,
   });
 
@@ -70,6 +72,7 @@ router.get("/start", authMiddleware, (req, res) => {
  */
 router.get("/callback", async (req, res) => {
   const { code, state, error: googleError } = req.query;
+  const frontendAppUrl = process.env.FRONTEND_URL || "http://localhost:3000";
 
   let decodedState = {};
   try {

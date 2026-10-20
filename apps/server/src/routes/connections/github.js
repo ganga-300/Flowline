@@ -41,6 +41,9 @@ router.get("/start", authMiddleware, (req, res) => {
     redirect_uri: redirectUri,
     scope: scopes.join(" "),
     state: stateToken,
+    // Always show GitHub's account picker so users can connect an account other
+    // than the one currently signed in on github.com.
+    prompt: "select_account",
   });
 
   res.redirect(`https://github.com/login/oauth/authorize?${params.toString()}`);

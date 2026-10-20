@@ -3,7 +3,9 @@
 import { useState, useEffect } from "react";
 import { authFetch, API_BASE_URL } from "@/lib/api";
 
-export function GitHubRepoSelector({ value, onChange, onSampleDataChange }) {
+export function GitHubRepoSelector({ connectionId, value, onChange, onSampleDataChange }) {
+  // Repos are listed with the GitHub account chosen in the trigger, not just the newest connection.
+  const connParam = connectionId ? `connectionId=${encodeURIComponent(connectionId)}` : "";
   const [mode, setMode] = useState("my_repos"); // "org" | "my_repos" | "manual"
   const [ownerInput, setOwnerInput] = useState(() => {
     if (value && value.includes("/")) {
@@ -26,7 +28,7 @@ export function GitHubRepoSelector({ value, onChange, onSampleDataChange }) {
     setError(null);
     try {
       const res = await authFetch(
-        `/connections/github/repos?owner=${encodeURIComponent(queryOwner.trim())}`
+        `/connections/github/repos?owner=${encodeURIComponent(queryOwner.trim())}${connParam ? `&${connParam}` : ""}`
       );
       const contentType = res.headers.get("content-type") || "";
       let data = {};
@@ -56,7 +58,7 @@ export function GitHubRepoSelector({ value, onChange, onSampleDataChange }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await authFetch(`/connections/github/repos`);
+      const res = await authFetch(`/connections/github/repos${connParam ? `?${connParam}` : ""}`);
       const contentType = res.headers.get("content-type") || "";
       let data = {};
       if (contentType.includes("application/json")) {
@@ -81,6 +83,13 @@ export function GitHubRepoSelector({ value, onChange, onSampleDataChange }) {
       setLoading(false);
     }
   };
+
+  // Load "My Repos" for the selected account whenever the account changes.
+  useEffect(() => {
+    if (!connectionId || mode !== "my_repos") return;
+    queueMicrotask(() => fetchMyRepos());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectionId]);
 
   const handleSelectRepo = (repoName) => {
     onChange(repoName);

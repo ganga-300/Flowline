@@ -13,7 +13,7 @@ export const sendEmailAction = {
       label: "To",
       type: "text",
       required: true,
-      placeholder: "recipient@example.com or {{trigger.email}}",
+      placeholder: "recipient@example.com or {{trigger.email.from}}",
       description: "Primary recipient email address",
     },
     {

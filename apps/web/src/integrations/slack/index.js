@@ -19,12 +19,6 @@ export const slackIntegration = {
           required: true,
           placeholder: "Select a channel",
           description: "Select the target Slack channel",
-          options: [
-            { label: "#general", value: "#general" },
-            { label: "#random", value: "#random" },
-            { label: "#alerts", value: "#alerts" },
-            { label: "#leads", value: "#leads" },
-          ],
         },
         {
           key: "text",

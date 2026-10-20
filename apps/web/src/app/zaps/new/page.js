@@ -10,6 +10,9 @@ import { ActionIntegrationSelector } from "@/integrations/ActionIntegrationSelec
 import { triggerProviders } from "@/integrations/triggers";
 import { GitHubRepoSelector } from "@/integrations/GitHubRepoSelector";
 import { ConnectionSelector } from "@/integrations/ConnectionSelector";
+import { getPlaceholderSample, withRepository, flattenSample } from "@/integrations/triggerVariables";
+import { validateZapForPublish } from "@/lib/zapValidation";
+import { saveBuilderDraft, consumeBuilderDraft, clearBuilderDraft, applyConnectionToDraft } from "@/lib/builderDraft";
 
 // ── Icons ────────────────────────────────────────────────────────────
 function ZapIcon({ className = "w-5 h-5" }) {
@@ -124,18 +127,23 @@ function getStepIcon(type) {
 function SlackChannelDropdown({ connectionId, value, onChange }) {
   const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   useEffect(() => {
     if (!connectionId) return;
     let cancelled = false;
     setLoading(true);
     authFetch(`/connections/${connectionId}/options?type=slack_channels`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (!cancelled) setChannels(data.options || []);
+      .then(async (res) => ({ ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) }))
+      .then(({ ok, status, data }) => {
+        if (cancelled) return;
+        setChannels(ok ? data.options || [] : []);
+        setLoadError(ok ? null : data.error || `Could not load channels (HTTP ${status})`);
       })
       .catch(() => {
-        if (!cancelled) setChannels([]);
+        if (cancelled) return;
+        setChannels([]);
+        setLoadError("Could not reach the Flowline server to load channels.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -168,6 +176,7 @@ function SlackChannelDropdown({ connectionId, value, onChange }) {
           </option>
         ))}
       </select>
+      {loadError && <p className="text-[11px] text-red-400 mt-1">{loadError}</p>}
       <p className="text-[11px] text-slate-500 mt-1">
         Select the channel to listen for new messages.
       </p>
@@ -211,70 +220,64 @@ export default function NewZapBuilderPage() {
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishError, setPublishError] = useState(null);
   const [successToast, setSuccessToast] = useState(null);
-  const [sampleData, setSampleData] = useState({
-    body: {
-      email: "user@example.com",
-      name: "Alex Smith",
-      subject: "New Registration",
-      message: "Hello from Flowline!",
-    },
-  });
+  // Same shape as the payload the worker receives, so {{trigger.*}} paths match real runs.
+  const [sampleData, setSampleData] = useState(() => getPlaceholderSample("webhook", "catch_hook"));
   const [testStepLoading, setTestStepLoading] = useState(false);
   const [testStepResult, setTestStepResult] = useState(null);
   const [isFetchingSample, setIsFetchingSample] = useState(false);
   const [sampleFetchStatus, setSampleFetchStatus] = useState(null);
 
+  // Draft state for side panel editing
+  const [panelDraft, setPanelDraft] = useState(null);
+
   // Process return query params from OAuth redirects (/zaps/new?connected=gmail|slack|github&connectionId=...)
+  // and restore the draft that was saved before the redirect (see lib/builderDraft.js).
+  const [draftRestoreDone, setDraftRestoreDone] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
     const urlParams = new URLSearchParams(window.location.search);
     const connected = urlParams.get("connected");
     const connectionIdParam = urlParams.get("connectionId");
     const errorParam = urlParams.get("error");
+    const isOAuthReturn = Boolean((connected && connectionIdParam) || errorParam);
 
-    if (connected && connectionIdParam) {
-      queueMicrotask(() => {
+    // Only a return from OAuth restores a saved draft; a normal visit starts fresh.
+    let restored = isOAuthReturn ? consumeBuilderDraft() : null;
+    if (restored && connected && connectionIdParam) {
+      restored = applyConnectionToDraft(restored, connected, connectionIdParam);
+    }
+
+    queueMicrotask(() => {
+      if (restored) {
+        if (restored.zapName) setZapName(restored.zapName);
+        if (restored.trigger) setTrigger(restored.trigger);
+        if (Array.isArray(restored.steps)) setSteps(restored.steps);
+        if (restored.sampleData) setSampleData(restored.sampleData);
+        if (restored.panelDraft && restored.activePanel) {
+          setPanelDraft(restored.panelDraft);
+          setActivePanel(restored.activePanel);
+        }
+      }
+      if (connected && connectionIdParam) {
         const provName = connected === "gmail" ? "Gmail" : connected === "slack" ? "Slack" : "GitHub";
         setSuccessToast(`${provName} connected successfully!`);
-        setSteps((prevSteps) =>
-          prevSteps.map((s) => {
-            if (s.type === "ACTION" && s.config?.provider === connected) {
-              return {
-                ...s,
-                isConfigured: true,
-                config: {
-                  ...s.config,
-                  connectionId: connectionIdParam,
-                },
-              };
-            }
-            return s;
-          })
-        );
-        setTrigger((prevTrigger) => {
-          if (prevTrigger.config?.provider === connected) {
-            return {
-              ...prevTrigger,
-              config: {
-                ...prevTrigger.config,
-                connectionId: connectionIdParam,
-              },
-            };
-          }
-          return prevTrigger;
-        });
-      });
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } else if (errorParam) {
-      queueMicrotask(() => {
+      } else if (errorParam) {
         setPublishError(errorParam);
-      });
+      }
+      setDraftRestoreDone(true);
+    });
+
+    if (isOAuthReturn) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []);
 
-  // Draft state for side panel editing
-  const [panelDraft, setPanelDraft] = useState(null);
+  // Keep the in-progress Zap in sessionStorage so the full-page OAuth redirect
+  // started by "Connect account" doesn't wipe it. Starts only after the restore check above.
+  useEffect(() => {
+    if (!draftRestoreDone) return;
+    saveBuilderDraft({ zapName, trigger, steps, activePanel, panelDraft, sampleData });
+  }, [draftRestoreDone, zapName, trigger, steps, activePanel, panelDraft, sampleData]);
 
   // Open side panel
   const openTriggerPanel = () => {
@@ -451,15 +454,10 @@ export default function NewZapBuilderPage() {
         }
       }
 
-      // Pre-publish validation guards
-      if (currentTrigger.config?.provider === "github" && !currentTrigger.config?.repo) {
-        throw new Error("Please select a GitHub repository in the trigger step.");
-      }
-      for (let i = 0; i < currentSteps.length; i++) {
-        const s = currentSteps[i];
-        if (s.type === "ACTION" && !s.config?.provider && !s.config?.url) {
-          throw new Error(`Step ${i + 1} is incomplete. Please select an app to continue.`);
-        }
+      // Pre-publish validation guards (accounts, repo/channel, incomplete steps)
+      const validationError = validateZapForPublish({ trigger: currentTrigger, steps: currentSteps });
+      if (validationError) {
+        throw new Error(validationError);
       }
 
       // Build request body according to backend requirements
@@ -539,6 +537,7 @@ export default function NewZapBuilderPage() {
       }
 
       // Success -> Redirect to dashboard
+      clearBuilderDraft();
       router.push("/dashboard");
     } catch (err) {
       setPublishError(err.message || "Failed to publish Zap. Please check your configuration.");
@@ -908,7 +907,7 @@ export default function NewZapBuilderPage() {
                         <div className="flex items-center justify-between">
                           <h4 className="text-sm font-semibold text-slate-200">Sample Trigger Variables</h4>
                           <span className="text-[10px] font-mono text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
-                            {Object.keys(sampleData?.body || sampleData || {}).length} fields
+                            {flattenSample(sampleData).length} fields
                           </span>
                         </div>
                         <p className="text-xs text-slate-400">
@@ -923,10 +922,10 @@ export default function NewZapBuilderPage() {
                               </tr>
                             </thead>
                             <tbody>
-                              {Object.entries(sampleData?.body || sampleData || {}).map(([k, v]) => (
+                              {flattenSample(sampleData).map(({ path: k, value: v }) => (
                                 <tr key={k} className="border-b border-slate-800/60 hover:bg-slate-900/50">
-                                  <td className="p-2 text-[#c4f542] font-semibold border-r border-slate-800">{k}</td>
-                                  <td className="p-2 text-slate-200 truncate max-w-xs">{typeof v === "object" ? JSON.stringify(v) : String(v)}</td>
+                                  <td className="p-2 text-[#c4f542] font-semibold border-r border-slate-800">trigger.{k}</td>
+                                  <td className="p-2 text-slate-200 truncate max-w-xs">{v}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -1035,47 +1034,7 @@ export default function NewZapBuilderPage() {
                             const pId = e.target.value;
                             const p = triggerProviders.find((tp) => tp.id === pId) || triggerProviders[0];
                             const firstEvt = p.events[0];
-                            if (pId === "gmail") {
-                              setSampleData({
-                                body: {
-                                  from: "sender@example.com",
-                                  to: "you@example.com",
-                                  subject: "Meeting Reminder",
-                                  body: "Don't forget our meeting at 3 PM.",
-                                  date: new Date().toISOString(),
-                                },
-                              });
-                            } else if (pId === "slack") {
-                              setSampleData({
-                                body: {
-                                  text: "Hello from Slack!",
-                                  user: "U012EXAMPLE",
-                                  channel: "#general",
-                                  ts: "1234567890.123456",
-                                },
-                              });
-                            } else if (pId === "github") {
-                              setSampleData({
-                                body: {
-                                  number: 101,
-                                  title: "New issue example",
-                                  body: "Issue details and bug description.",
-                                  html_url: "https://github.com/user/repo/issues/101",
-                                  state: "open",
-                                  user_login: "contributor1",
-                                  repo: panelDraft.config?.repo || "user/repo",
-                                },
-                              });
-                            } else {
-                              setSampleData({
-                                body: {
-                                  email: "user@example.com",
-                                  name: "Alex Smith",
-                                  subject: "New Registration",
-                                  message: "Hello from Flowline!",
-                                },
-                              });
-                            }
+                            setSampleData(getPlaceholderSample(pId, firstEvt.id, panelDraft.config?.repo));
                             setPanelDraft({
                               ...panelDraft,
                               type: firstEvt.type,
@@ -1107,6 +1066,7 @@ export default function NewZapBuilderPage() {
                             const evtId = e.target.value;
                             const curP = triggerProviders.find((tp) => tp.id === (panelDraft.config?.provider || "webhook")) || triggerProviders[0];
                             const evt = curP.events.find((ev) => ev.id === evtId) || curP.events[0];
+                            setSampleData(getPlaceholderSample(curP.id, evt.id, panelDraft.config?.repo));
                             setPanelDraft({
                               ...panelDraft,
                               type: evt.type,
@@ -1131,7 +1091,23 @@ export default function NewZapBuilderPage() {
                       {/* GitHub Trigger Config */}
                       {panelDraft.config?.provider === "github" && (
                         <div className="space-y-3">
+                          <ConnectionSelector
+                            providerId="github"
+                            providerName="GitHub"
+                            connectionId={panelDraft.config?.connectionId || panelDraft.connectionId}
+                            onChange={(connId) => {
+                              setPanelDraft({
+                                ...panelDraft,
+                                connectionId: connId,
+                                config: {
+                                  ...panelDraft.config,
+                                  connectionId: connId,
+                                },
+                              });
+                            }}
+                          />
                           <GitHubRepoSelector
+                            connectionId={panelDraft.config?.connectionId || panelDraft.connectionId}
                             value={panelDraft.config?.repo || ""}
                             onChange={(newRepo) => {
                               setPanelDraft({
@@ -1143,10 +1119,7 @@ export default function NewZapBuilderPage() {
                               });
                             }}
                             onSampleDataChange={(newRepo) => {
-                              setSampleData((prev) => ({
-                                ...prev,
-                                body: { ...prev.body, repo: newRepo },
-                              }));
+                              setSampleData((prev) => withRepository(prev, newRepo));
                             }}
                           />
                         </div>

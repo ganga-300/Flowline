@@ -2,6 +2,13 @@ const express = require("express");
 const router = express.Router();
 const requireAuth = require("../middleware/auth");
 const prisma = require("../prismaClient");
+// Same payload builders the poller uses, so samples match real runs exactly.
+const {
+  githubIssuePayload,
+  githubCommitPayload,
+  gmailMessagePayload,
+  slackMessagePayload,
+} = require("../../../worker/src/integrations/triggerPayloads");
 
 /**
  * POST /zaps/test-step
@@ -220,19 +227,7 @@ router.post("/fetch-sample", requireAuth, async (req, res) => {
         if (!Array.isArray(commits) || commits.length === 0) {
           return res.status(404).json({ error: `No commits found in ${cleanRepo}` });
         }
-        const commit = commits[0];
-        return res.json({
-          success: true,
-          sample: {
-            body: {
-              sha: commit.sha,
-              message: commit.commit?.message || "",
-              author_name: commit.commit?.author?.name || "",
-              html_url: commit.html_url,
-              repo: cleanRepo,
-            },
-          },
-        });
+        return res.json({ success: true, sample: githubCommitPayload(commits[0], cleanRepo) });
       }
 
       // Default: new_issue
@@ -252,20 +247,7 @@ router.post("/fetch-sample", requireAuth, async (req, res) => {
       }
 
       const issue = items.find((i) => !i.pull_request) || items[0];
-      return res.json({
-        success: true,
-        sample: {
-          body: {
-            number: issue.number,
-            title: issue.title,
-            body: issue.body || "",
-            html_url: issue.html_url,
-            state: issue.state,
-            user_login: issue.user?.login || "user",
-            repo: cleanRepo,
-          },
-        },
-      });
+      return res.json({ success: true, sample: githubIssuePayload(issue, cleanRepo) });
     }
 
     if (provider === "gmail") {
@@ -328,26 +310,7 @@ router.post("/fetch-sample", requireAuth, async (req, res) => {
       }
 
       const msgData = await msgRes.json();
-      const headers = msgData.payload?.headers || [];
-      const headerMap = {};
-      for (const h of headers) {
-        headerMap[h.name.toLowerCase()] = h.value;
-      }
-
-      return res.json({
-        success: true,
-        sample: {
-          body: {
-            id: msgData.id,
-            threadId: msgData.threadId,
-            from: headerMap["from"] || "sender@example.com",
-            to: headerMap["to"] || "you@example.com",
-            subject: headerMap["subject"] || "No Subject",
-            body: msgData.snippet || "Email body content",
-            date: headerMap["date"] || new Date().toISOString(),
-          },
-        },
-      });
+      return res.json({ success: true, sample: gmailMessagePayload(msgData) });
     }
 
     if (provider === "slack") {
@@ -395,18 +358,7 @@ router.post("/fetch-sample", requireAuth, async (req, res) => {
         return res.status(404).json({ error: "No messages found in this channel yet. Send a message in Slack to test!" });
       }
 
-      const latestMsg = validMessages[0];
-      return res.json({
-        success: true,
-        sample: {
-          body: {
-            text: latestMsg.text || "",
-            user: latestMsg.user || "U012EXAMPLE",
-            channel: channelId,
-            ts: latestMsg.ts || "",
-          },
-        },
-      });
+      return res.json({ success: true, sample: slackMessagePayload(validMessages[0], channelId) });
     }
 
     return res.status(400).json({ error: `Trigger provider "${provider}" does not support sample fetching.` });
