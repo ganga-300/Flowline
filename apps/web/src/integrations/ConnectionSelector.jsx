@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { authFetch, API_BASE_URL } from "@/lib/api";
+import { authFetch } from "@/lib/api";
+import { startOAuth } from "@/lib/oauth";
 
 /**
  * Reusable Account Connection Selector Component
@@ -61,14 +62,10 @@ export function ConnectionSelector({
   const activeConnections = propConnections.length > 0 ? propConnections : fetchedConnections;
 
   const handleConnectClick = () => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("flowline_token") : null;
-    if (!token) {
+    // Goes through OAuth and comes back to this page (the builder draft is kept, see builderDraft.js).
+    if (!startOAuth(providerId)) {
       setNotice("Authentication required. Please log in first.");
-      return;
     }
-    // Navigate to OAuth start endpoint on Flowline server, returning back to current page
-    const currentPath = typeof window !== "undefined" ? window.location.pathname + window.location.search : "/connections";
-    window.location.href = `${API_BASE_URL}/connections/${providerId}/start?token=${encodeURIComponent(token)}&returnUrl=${encodeURIComponent(currentPath)}`;
   };
 
   return (
