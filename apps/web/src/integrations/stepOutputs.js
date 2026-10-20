@@ -44,6 +44,7 @@ export function getStepOutputs(step) {
   const action = step?.config?.action;
   if (provider && action) return ACTION_OUTPUTS[`${provider}:${action}`] || [];
   if (step?.type === "AI") return [{ key: "content", label: "AI Response", example: "Summary text" }];
+  if (step?.type === "ACTION" && !provider && step?.config?.url) return [{ key: "status", label: "HTTP status", example: "200" }];
   return [];
 }
 

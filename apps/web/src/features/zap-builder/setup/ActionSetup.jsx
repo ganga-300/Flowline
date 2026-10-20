@@ -41,11 +41,11 @@ export function ActionSetup({ draft, updateDraft, sampleData, previousSteps }) {
                 {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
               </Select>
             </Field>
-            <Field label="URL">
+            <Field label="URL" hint="Use {{trigger.field}} to insert data; values are URL-encoded.">
               <Input type="url" placeholder="https://api.example.com/hook" value={config.url || ""} onChange={(e) => setConfig({ url: e.target.value })} className="font-mono text-[13px]" />
             </Field>
           </div>
-          <Field label="Body (JSON)">
+          <Field label="Body (JSON)" hint="Insert data inside string values, e.g. &quot;{{trigger.issue.title}}&quot;. Error responses (4xx/5xx) fail the step.">
             <Textarea
               rows={6}
               placeholder={'{\n  "event": "new issue"\n}'}

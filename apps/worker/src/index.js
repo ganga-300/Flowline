@@ -10,6 +10,7 @@ const { recordStepOutput, restoreStepOutputs } = require("./stepContext");
 const { runWithRetry, retryableError, planRecovery, planRetryCarryOver } = require("./recovery");
 const { requeueQueuedRuns } = require("./runQueue");
 const { aiPromptTemplate } = require("./aiStep");
+const { executeHttpRequest } = require("./integrations/http/request");
 const { startPollingScheduler, stopPollingScheduler, waitForPollingCycle } = require("./pollingCron");
 
 const slackBucket = new TokenBucket(5, 1); // 5 tokens capacity, 1 token/second refill
@@ -39,17 +40,10 @@ async function executeActionStep(step, context) {
     return await handler(step, context);
   }
 
-  // Preserved fallback for custom HTTP request steps
+  // Custom HTTP request step (no provider): templating, status checks and SSRF guard
+  // live in integrations/http/request.js (shared with the builder's Test button).
   await slackBucket.consume();
-
-  const { url, method = "POST", body = {} } = step.config || {};
-  const res = await fetch(url, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: method === "GET" ? undefined : JSON.stringify(body),
-  });
-  const output = await res.json().catch(() => ({}));
-  return { status: res.status, output };
+  return executeHttpRequest(step.config || {}, context);
 }
 
 async function executeAiStep(step) {

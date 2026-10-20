@@ -72,23 +72,17 @@ router.post("/", requireAuth, async (req, res) => {
         return res.json({ status: "SUCCESS", output: result.output, error: null });
       }
 
-      // Fallback: custom HTTP request
-      const { url, method = "POST", body = {} } = step.config || {};
-      if (!url) {
+      // Fallback: custom HTTP request - same code the worker runs.
+      if (!step.config?.url) {
         return res.json({ status: "ERROR", output: null, error: "No URL configured" });
       }
-
-      const { resolveTemplate } = require("../../../worker/src/conditions");
-      const resolvedUrl = resolveTemplate(context, url);
-      const resolvedBody = typeof body === "string" ? resolveTemplate(context, body) : body;
-
-      const fetchRes = await fetch(resolvedUrl, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: method === "GET" ? undefined : JSON.stringify(resolvedBody),
-      });
-      const output = await fetchRes.json().catch(() => ({}));
-      return res.json({ status: "SUCCESS", output, error: null });
+      try {
+        const { executeHttpRequest } = require("../../../worker/src/integrations/http/request");
+        const result = await executeHttpRequest(step.config, context);
+        return res.json({ status: "SUCCESS", output: result.output, error: null });
+      } catch (err) {
+        return res.json({ status: "ERROR", output: null, error: err.message });
+      }
 
     } else if (step.type === "AI") {
       const { resolveTemplate } = require("../../../worker/src/conditions");
