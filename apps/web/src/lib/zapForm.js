@@ -93,6 +93,8 @@ export function fromSavedZap(zap) {
       config: { ...(t.config || {}) },
       ...(t.connectionId && { connectionId: t.connectionId }),
       ...(t.pollIntervalSec && { pollIntervalSec: t.pollIntervalSec }),
+      // Shown in the builder so the user can copy the URL; never sent back on save.
+      ...(t.webhookToken && { webhookToken: t.webhookToken }),
       isConfigured: true,
     },
     steps,

@@ -1,167 +1,109 @@
 "use client";
 
 import { useState } from "react";
+import { Search, X } from "lucide-react";
+import { cn } from "@/lib/cn";
 import { getStepOutputVariables } from "./stepOutputs";
 import { getIntegration, getIntegrationAction } from "./index";
 
 function formatLabel(path) {
-  const parts = path.split(".");
-  const key = parts[parts.length - 1];
-  return key
-    .replace(/_/g, " ")
-    .replace(/([A-Z])/g, " $1")
-    .replace(/^./, (str) => str.toUpperCase())
-    .trim();
+  const key = path.split(".").pop();
+  return key.replace(/_/g, " ").replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase()).trim();
 }
 
 function flattenObject(obj, prefix = "") {
   let result = [];
   if (!obj || typeof obj !== "object") return result;
-
   for (const [key, val] of Object.entries(obj)) {
-    const newKey = prefix ? `${prefix}.${key}` : key;
-    if (val && typeof val === "object" && !Array.isArray(val)) {
-      result = result.concat(flattenObject(val, newKey));
-    } else {
-      result.push({ path: newKey, label: formatLabel(newKey), value: String(val) });
-    }
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (val && typeof val === "object" && !Array.isArray(val)) result = result.concat(flattenObject(val, path));
+    else result.push({ path, label: formatLabel(path), value: String(val) });
   }
   return result;
 }
 
+function stepTabLabel(step, idx) {
+  const c = step.config || {};
+  const name = c.provider
+    ? getIntegrationAction(c.provider, c.action)?.name || getIntegration(c.provider)?.name || c.provider
+    : step.name || step.type;
+  return `${idx + 2}. ${name}`;
+}
+
+/** Inline panel for inserting trigger fields or earlier steps' outputs into a field. */
 export function VariablePickerModal({ sampleData = {}, steps = [], onSelect, onClose }) {
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("trigger");
+  const q = search.toLowerCase();
+  const matches = (item) => !q || item.path.toLowerCase().includes(q) || item.label.toLowerCase().includes(q) || String(item.value).toLowerCase().includes(q);
 
-  const triggerFields = flattenObject(sampleData);
-  const filteredTriggerFields = triggerFields.filter(
-    (f) =>
-      f.path.toLowerCase().includes(search.toLowerCase()) ||
-      f.label.toLowerCase().includes(search.toLowerCase()) ||
-      f.value.toLowerCase().includes(search.toLowerCase())
-  );
+  const items =
+    activeTab === "trigger"
+      ? flattenObject(sampleData).map((f) => ({ ...f, path: `trigger.${f.path}`, token: `{{trigger.${f.path}}}` }))
+      : getStepOutputVariables(steps.find((s) => s.id === activeTab) || {});
+  const shown = items.filter(matches);
+
+  const tabs = [{ id: "trigger", label: "1. Trigger" }, ...steps.map((s, i) => ({ id: s.id, label: stepTabLabel(s, i) }))];
 
   return (
-    <div className="mt-2 p-3 bg-[#161b22] border border-[#c4f542]/40 rounded-xl shadow-2xl space-y-3 z-50 animate-fadeIn">
-      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-        <div className="flex items-center gap-2 text-xs font-mono text-[#c4f542] font-semibold">
-          <span>⚡ Select Variable Data</span>
+    <div className="mt-1 space-y-2.5 rounded-card border border-line bg-surface p-3 shadow-raised">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint" />
+          <input
+            autoFocus
+            type="text"
+            placeholder="Search data"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-8 w-full rounded-control border border-line bg-surface pl-8 pr-2 text-sm text-ink placeholder:text-ink-faint focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+          />
         </div>
         {onClose && (
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-slate-400 hover:text-white text-xs cursor-pointer"
-          >
-            ✕
+          <button type="button" onClick={onClose} aria-label="Close" className="rounded-md p-1.5 text-ink-faint hover:bg-subtle hover:text-ink cursor-pointer">
+            <X className="size-4" />
           </button>
         )}
       </div>
 
-      <input
-        type="text"
-        placeholder="Search variables..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="w-full bg-[#0d1117] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-slate-500 outline-none focus:border-[#c4f542]"
-      />
+      {tabs.length > 1 && (
+        <div className="flex gap-1 overflow-x-auto">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setActiveTab(t.id)}
+              className={cn(
+                "shrink-0 rounded-full px-2.5 py-1 text-xs font-medium transition cursor-pointer",
+                activeTab === t.id ? "bg-ink text-white" : "bg-subtle text-ink-muted hover:text-ink"
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
 
-      <div className="flex border-b border-slate-800 text-xs font-mono">
-        <button
-          type="button"
-          onClick={() => setActiveTab("trigger")}
-          className={`px-3 py-1.5 border-b-2 font-medium transition-colors cursor-pointer ${
-            activeTab === "trigger"
-              ? "border-[#c4f542] text-[#c4f542]"
-              : "text-slate-400 hover:text-slate-200 border-transparent"
-          }`}
-        >
-          Trigger Payload
-        </button>
-        {steps.map((s, idx) => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => setActiveTab(s.id)}
-            className={`px-3 py-1.5 border-b-2 font-medium transition-colors cursor-pointer ${
-              activeTab === s.id
-                ? "border-[#c4f542] text-[#c4f542]"
-                : "text-slate-400 hover:text-slate-200 border-transparent"
-            }`}
-          >
-            Step {idx + 1} ({s.config?.provider
-              ? `${getIntegration(s.config.provider)?.name || s.config.provider}: ${getIntegrationAction(s.config.provider, s.config.action)?.name || s.config.action || "?"}`
-              : s.type})
-          </button>
-        ))}
-      </div>
-
-      <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1 font-mono text-xs">
-        {activeTab === "trigger" ? (
-          filteredTriggerFields.length > 0 ? (
-            filteredTriggerFields.map((item) => (
-              <button
-                key={item.path}
-                type="button"
-                onClick={() =>
-                  onSelect({
-                    token: `{{trigger.${item.path}}}`,
-                    label: item.label,
-                    path: `trigger.${item.path}`,
-                  })
-                }
-                className="w-full text-left p-2 rounded-lg bg-[#0d1117] hover:bg-[#c4f542]/10 border border-slate-800 hover:border-[#c4f542]/40 transition-all flex items-center justify-between group cursor-pointer"
-              >
-                <div>
-                  <div className="text-white font-medium text-xs flex items-center gap-2">
-                    <span className="px-1.5 py-0.5 rounded bg-[#c4f542]/20 text-[#c4f542] text-[10px] font-bold">
-                      {item.label}
-                    </span>
-                    <span className="text-slate-400 text-[11px]">trigger.{item.path}</span>
-                  </div>
-                </div>
-                <span className="text-slate-400 text-[11px] truncate max-w-[120px] bg-slate-900 px-2 py-0.5 rounded">
-                  {item.value}
-                </span>
-              </button>
-            ))
-          ) : (
-            <div className="p-3 text-slate-500 text-center italic text-xs">
-              No matching trigger variables found.
-            </div>
-          )
+      <div className="max-h-56 space-y-0.5 overflow-y-auto">
+        {shown.length > 0 ? (
+          shown.map((item) => (
+            <button
+              key={item.path}
+              type="button"
+              onClick={() => onSelect({ token: item.token, label: item.label, path: item.path })}
+              className="flex w-full items-center justify-between gap-3 rounded-control px-2.5 py-2 text-left hover:bg-subtle cursor-pointer"
+            >
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-ink">{item.label}</span>
+                <span className="block truncate font-mono text-[11px] text-ink-faint">{item.path}</span>
+              </span>
+              <span className="max-w-[45%] truncate text-xs text-ink-muted">{activeTab === "trigger" ? item.value : `e.g. ${item.value}`}</span>
+            </button>
+          ))
         ) : (
-          <div className="space-y-1.5">
-            {(() => {
-              const step = steps.find((st) => st.id === activeTab);
-              const outputs = step ? getStepOutputVariables(step) : [];
-              if (outputs.length === 0) {
-                return (
-                  <div className="p-3 text-slate-500 text-center italic text-xs">
-                    This step has no output fields to insert.
-                  </div>
-                );
-              }
-              return outputs.map((item) => (
-                <button
-                  key={item.path}
-                  type="button"
-                  onClick={() => onSelect({ token: item.token, label: item.label, path: item.path })}
-                  className="w-full text-left p-2 rounded-lg bg-[#0d1117] hover:bg-[#c4f542]/10 border border-slate-800 hover:border-[#c4f542]/40 transition-all flex items-center justify-between cursor-pointer"
-                >
-                  <div className="text-white font-medium text-xs flex items-center gap-2">
-                    <span className="px-1.5 py-0.5 rounded bg-[#c4f542]/20 text-[#c4f542] text-[10px] font-bold">
-                      {item.label}
-                    </span>
-                    <span className="text-slate-400 text-[11px]">{item.path}</span>
-                  </div>
-                  <span className="text-slate-400 text-[11px] truncate max-w-[120px] bg-slate-900 px-2 py-0.5 rounded">
-                    e.g. {item.value}
-                  </span>
-                </button>
-              ));
-            })()}
-          </div>
+          <p className="px-2.5 py-4 text-center text-sm text-ink-muted">
+            {items.length === 0 ? "This step has no output to insert." : "Nothing matches your search."}
+          </p>
         )}
       </div>
     </div>
