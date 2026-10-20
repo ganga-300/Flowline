@@ -1,7 +1,7 @@
 const prisma = require("../../prismaClient");
 const { resolveTemplate } = require("../../conditions");
 const TokenBucket = require("../../rateLimiter");
-const { describeSlackError } = require("./errors");
+const { describeSlackError, slackApiError } = require("./errors");
 
 // Slack rate limiter: 5 messages burst capacity, 1 msg/sec refill rate
 const slackBucket = new TokenBucket(5, 1);
@@ -85,7 +85,7 @@ async function executeSlackSendDm(step, context) {
 
   const data = await res.json();
   if (!data.ok) {
-    throw new Error(describeSlackError(data.error));
+    throw slackApiError(data.error);
   }
 
   return {

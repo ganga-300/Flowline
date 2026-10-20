@@ -7,6 +7,8 @@ const { executeFormatterStep } = require("./formatter");
 const TokenBucket = require("./rateLimiter");
 const { getIntegrationHandler } = require("./integrations/registry");
 const { recordStepOutput, restoreStepOutputs } = require("./stepContext");
+const { runWithRetry, retryableError, planRecovery } = require("./recovery");
+const { requeueQueuedRuns } = require("./runQueue");
 const { startPollingScheduler, stopPollingScheduler, waitForPollingCycle } = require("./pollingCron");
 
 const slackBucket = new TokenBucket(5, 1); // 5 tokens capacity, 1 token/second refill
@@ -68,7 +70,7 @@ async function executeAiStep(step) {
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`AI step failed: ${res.status} ${errText}`);
+    throw retryableError(`AI step failed: ${res.status} ${errText}`, res.status);
   }
 
   const data = await res.json();
@@ -76,12 +78,15 @@ async function executeAiStep(step) {
   return { output: { content } };
 }
 
-// Retry wrapper - used for ACTION / AI steps that call external services
+// Retry wrapper - used for ACTION / AI steps that call external services.
+// Only failures where the provider certainly did not act (rate limits, 502/503/504,
+// connection never established) are retried - see recovery.js. Anything else could
+// already have sent the message/email/issue, so retrying would create a duplicate.
+// Status is RUNNING while a request is in flight and RETRYING while waiting to retry;
+// crash recovery relies on that distinction.
 async function executeWithRetry(step, stepExecutionId, context) {
-  let lastError;
-
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    try {
+  return runWithRetry(
+    async () => {
       if (step.type === "AI") {
         return await executeAiStep({ ...step, _context: context });
       }
@@ -89,22 +94,29 @@ async function executeWithRetry(step, stepExecutionId, context) {
         return executeFormatterStep(step, context);
       }
       return await executeActionStep(step, context);
-    } catch (err) {
-      lastError = err;
-      console.log(`[worker] step ${step.id} attempt ${attempt} failed: ${err.message}`);
-
-      await prisma.stepExecution.update({
-        where: { id: stepExecutionId },
-        data: { attempt, status: "RETRYING", error: err.message },
-      });
-
-      if (attempt < MAX_ATTEMPTS) {
-        await sleep(BASE_BACKOFF_MS * 2 ** (attempt - 1));
-      }
+    },
+    {
+      attempts: MAX_ATTEMPTS,
+      baseDelayMs: BASE_BACKOFF_MS,
+      onAttemptStart: async (attempt) => {
+        if (attempt > 1) {
+          await prisma.stepExecution.update({
+            where: { id: stepExecutionId },
+            data: { attempt, status: "RUNNING" },
+          });
+        }
+      },
+      onAttemptFailed: async (attempt, err, willRetry) => {
+        console.log(`[worker] step ${step.id} attempt ${attempt} failed${willRetry ? " (will retry)" : ""}: ${err.message}`);
+        if (willRetry) {
+          await prisma.stepExecution.update({
+            where: { id: stepExecutionId },
+            data: { attempt, status: "RETRYING", error: err.message },
+          });
+        }
+      },
     }
-  }
-
-  throw lastError;
+  );
 }
 
 // Recursively marks a whole unselected branch subtree as SKIPPED - not
@@ -123,7 +135,7 @@ async function markSkipped(step, allSteps, zapRunId) {
 // Executes an ordered list of sibling steps against the shared context.
 // Returns { filtered: true } if a filter stopped the run, or { done: true }
 // when the whole list completed normally.
-async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterStepId) {
+async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterStepId, completedStepIds = new Set()) {
   let resuming = !!resumeAfterStepId; // true agar resume ho raha hai, warna false
   for (const step of steps) {
     if (resuming) {
@@ -131,6 +143,10 @@ async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterS
         resuming = false; // yehi wo delay step tha - isse aage se normal chalna shuru karo
       }
       continue; // is step ko skip karo (already ho chuka hai pehle)
+    }
+    // Already succeeded before a worker crash: don't run it (or send it) again.
+    if (completedStepIds.has(step.id)) {
+      continue;
     }
     if (step.type === "DELAY") {
       const seconds = step.config.seconds || 60;
@@ -197,7 +213,7 @@ async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterS
       if (!selected) return { done: true }; // no branch matched, nothing further to run
 
       // Continue into the selected child (and its own children, if any)
-      const result = await executeStepList([selected], allSteps, context, zapRunId);
+      const result = await executeStepList([selected], allSteps, context, zapRunId, undefined, completedStepIds);
       if (result.filtered) return result;
       continue;
     }
@@ -223,7 +239,7 @@ async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterS
         };
 
         if (children.length > 0) {
-          await executeStepList(children, allSteps, loopContext, zapRunId);
+          await executeStepList(children, allSteps, loopContext, zapRunId, undefined, completedStepIds);
         }
         loopResults.push({ index: i, item });
       }
@@ -267,7 +283,7 @@ async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterS
       .filter((s) => s.parentStepId === step.id)
       .sort((a, b) => a.order - b.order);
     if (nextChildren.length) {
-      const result = await executeStepList(nextChildren, allSteps, context, zapRunId);
+      const result = await executeStepList(nextChildren, allSteps, context, zapRunId, undefined, completedStepIds);
       if (result.filtered) return result;
     }
   }
@@ -282,6 +298,15 @@ const worker = new Worker(
     const { zapRunId , resumeAfterStepId } = job.data;
 
     const run = await prisma.zapRun.findUnique({ where: { id: zapRunId } });
+    if (!run) {
+      console.warn(`[worker] run ${zapRunId} not found, skipping job ${job.id}`);
+      return;
+    }
+    // BullMQ can hand out a job again after a crash; a finished run must never run twice.
+    if (["SUCCESS", "FAILED", "FILTERED"].includes(run.status)) {
+      console.log(`[worker] run ${zapRunId} already ${run.status}, skipping duplicate job ${job.id}`);
+      return;
+    }
     const allSteps = await prisma.step.findMany({ where: { zapId: run.zapId } });
     const topLevel = allSteps
       .filter((s) => !s.parentStepId)
@@ -289,26 +314,48 @@ const worker = new Worker(
 
     const context = { trigger: run.triggerPayload || {}, steps: {} };
 
-    if (resumeAfterStepId) {
-      const priorExecutions = await prisma.stepExecution.findMany({
-        where: { zapRunId, status: "SUCCESS" },
-      });
-      restoreStepOutputs(context, priorExecutions, allSteps);
-    }
+    // Earlier attempts of this run (a Delay resume, or a re-run after a worker crash).
+    const priorExecutions = await prisma.stepExecution.findMany({ where: { zapRunId } });
+    const recovery = planRecovery(allSteps, priorExecutions);
+    restoreStepOutputs(context, priorExecutions.filter((e) => e.status === "SUCCESS"), allSteps);
 
     await prisma.zapRun.update({
       where: { id: zapRunId },
-      data: { status: "RUNNING" },
+      data: { status: "RUNNING", ...(!run.startedAt && { startedAt: new Date() }) },
     });
 
     try {
-      const result = await executeStepList(topLevel, allSteps, context, zapRunId,resumeAfterStepId);
+      // A step that was mid-request when the worker died may or may not have reached the
+      // provider. Don't re-send it (that could duplicate a message/email/issue): fail it
+      // clearly so the user can check and use "Retry run" if needed.
+      if (recovery.interrupted.length > 0) {
+        for (const execution of recovery.interrupted) {
+          await prisma.stepExecution.update({
+            where: { id: execution.id },
+            data: {
+              status: "FAILED",
+              error: "Flowline stopped while this step was sending its request, so it can't tell whether the app received it. It was not re-sent automatically to avoid a duplicate - check the app and use Retry run if needed.",
+            },
+          });
+        }
+        throw new Error("A step's outcome is unknown after a worker restart; not re-sent to avoid a duplicate.");
+      }
+      // Steps that were only waiting to retry (nothing was sent) run again.
+      for (const execution of recovery.superseded) {
+        await prisma.stepExecution.update({
+          where: { id: execution.id },
+          data: { status: "FAILED", error: "Interrupted by a worker restart while waiting to retry; ran again." },
+        });
+      }
+
+      const result = await executeStepList(topLevel, allSteps, context, zapRunId, resumeAfterStepId, recovery.completedStepIds);
 
       if (result.paused) {
         await zapExecutionQueue.add(
           "resume-zap-run",
           { zapRunId, resumeAfterStepId: result.paused.resumeAfterStepId },
-          { delay: result.paused.delayMs }
+          // Fixed jobId: if this job is re-run after a crash, the resume isn't queued twice.
+          { delay: result.paused.delayMs, jobId: `zap-run-${zapRunId}-after-${result.paused.resumeAfterStepId}` }
         );
         return; // run stays RUNNING in the database until the resume completes
       }
@@ -316,13 +363,13 @@ const worker = new Worker(
       const finalStatus = result.filtered ? "FILTERED" : "SUCCESS";
       await prisma.zapRun.update({
         where: { id: zapRunId },
-        data: { status: finalStatus },
+        data: { status: finalStatus, completedAt: new Date() },
       });
       console.log(`[worker] job ${job.id} completed with status ${finalStatus}`);
     } catch (err) {
       await prisma.zapRun.update({
         where: { id: zapRunId },
-        data: { status: "FAILED" },
+        data: { status: "FAILED", completedAt: new Date() },
       });
       console.error(`[worker] job ${job.id} failed:`, err.message);
 
@@ -345,12 +392,20 @@ const worker = new Worker(
       }
     }
   },
-  { connection }
+  // maxStalledCount: how many times a job may be recovered after a worker crash before
+  // BullMQ gives up on it (default 1); crash recovery itself is handled above.
+  { connection, maxStalledCount: 3 }
 );
 
 worker.on("error", (err) => console.error("[worker] connection error:", err));
 
 console.log("Worker started, listening for jobs...");
+
+// Runs created but never queued (e.g. a crash between saving the run and queueing it) are
+// queued now. Job ids are per run, so runs that already have a job are not queued twice.
+requeueQueuedRuns(prisma, zapExecutionQueue)
+  .then((n) => n && console.log(`[worker] re-queued ${n} waiting run(s) on startup`))
+  .catch((err) => console.error("[worker] startup re-queue failed:", err.message));
 
 // Automatically start background polling engine alongside the worker
 startPollingScheduler();

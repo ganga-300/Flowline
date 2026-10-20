@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const router = express.Router();
 const prisma = require("../prismaClient");
 const { zapExecutionQueue } = require("../Queue");
+const { createAndQueueRun } = require("../../../worker/src/runQueue");
 
 router.post("/:token", async (req, res) => {
   const trigger = await prisma.trigger.findUnique({
@@ -24,26 +25,15 @@ router.post("/:token", async (req, res) => {
     .digest("hex");
   const idempotencyKey = `${trigger.id}-${payloadHash}`;
 
-  try {
-    const run = await prisma.zapRun.create({
-      data: {
-        zapId: trigger.zapId,
-        status: "QUEUED",
-        idempotencyKey,
-        triggerPayload: req.body,
-      },
-    });
+  // One run per event (idempotencyKey) and one job per run (fixed jobId). A redelivered
+  // event whose run was saved but never queued (crash in between) gets queued now.
+  const { run, created } = await createAndQueueRun(prisma, zapExecutionQueue, {
+    zapId: trigger.zapId,
+    idempotencyKey,
+    triggerPayload: req.body,
+  });
 
-    await zapExecutionQueue.add("execute-zap-run", { zapRunId: run.id });
-
-    return res.status(202).json({ accepted: true, runId: run.id });
-  } catch (err) {
-    if (err.code === "P2002") {
-      const existing = await prisma.zapRun.findUnique({ where: { idempotencyKey } });
-      return res.status(202).json({ accepted: true, runId: existing.id, duplicate: true });
-    }
-    throw err;
-  }
+  return res.status(202).json({ accepted: true, runId: run.id, ...(!created && { duplicate: true }) });
 });
 
 module.exports = router;

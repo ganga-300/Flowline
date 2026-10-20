@@ -1,6 +1,7 @@
 const prisma = require("../../prismaClient");
 const { resolveTemplate } = require("../../conditions");
 const { refreshGoogleAccessToken } = require("../google/refreshToken");
+const { retryableError } = require("../../recovery");
 
 /**
  * Encodes a string as URL-safe Base64 (without padding '=') as required by Gmail API
@@ -132,7 +133,8 @@ async function executeGmailSendEmail(step, context) {
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Gmail API send email failed (${res.status}): ${errText}`);
+    // retryable only for 429/502/503/504 (Gmail did not send); other failures are final.
+    throw retryableError(`Gmail API send email failed (${res.status}): ${errText}`, res.status);
   }
 
   const data = await res.json();

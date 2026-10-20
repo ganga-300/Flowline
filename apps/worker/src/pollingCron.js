@@ -12,6 +12,7 @@ const {
 } = require("./integrations/triggerPayloads");
 const { fetchChannelHistory } = require("./integrations/slack/channelHistory");
 const { createSlackNameResolver } = require("./integrations/slack/names");
+const { createAndQueueRun } = require("./runQueue");
 
 const connection = new IORedis("redis://localhost:6380", {
   maxRetriesPerRequest: null,
@@ -20,6 +21,13 @@ const connection = new IORedis("redis://localhost:6380", {
 const zapExecutionQueue = new Queue("zap-execution", { connection });
 
 const POLL_CYCLE_MS = 5 * 60 * 1000; // 5 minutes
+
+// Records that `marker` (an item id) has a run. Called only AFTER the run for that item
+// is saved and queued, so a crash can never skip an item: the next poll starts after the
+// last item that really has a run, and createAndQueueRun dedupes anything redone.
+async function advanceMarker(trigger, marker) {
+  await prisma.trigger.update({ where: { id: trigger.id }, data: { lastPollHash: marker } });
+}
 
 /**
  * Polling handler for GitHub triggers (new_issue, new_push)
@@ -77,29 +85,15 @@ async function pollGitHubTrigger(trigger) {
       newCommits.push(c);
     }
 
-    await prisma.trigger.update({
-      where: { id: trigger.id },
-      data: { lastPollHash: latestSha },
-    });
-
+    // Oldest first; the marker moves only after each commit's run is saved and queued.
     for (const commit of newCommits.reverse()) {
-      const payload = githubCommitPayload(commit, cleanRepo);
-
-      const idempotencyKey = `${trigger.id}-commit-${commit.sha}`;
-      try {
-        const run = await prisma.zapRun.create({
-          data: {
-            zapId: trigger.zapId,
-            status: "QUEUED",
-            idempotencyKey,
-            triggerPayload: payload,
-          },
-        });
-        await zapExecutionQueue.add("execute-zap-run", { zapRunId: run.id });
-        console.log(`[polling] GitHub: queued run ${run.id} for new commit ${commit.sha.slice(0, 7)}`);
-      } catch (err) {
-        if (err.code !== "P2002") throw err;
-      }
+      const { run, created } = await createAndQueueRun(prisma, zapExecutionQueue, {
+        zapId: trigger.zapId,
+        idempotencyKey: `${trigger.id}-commit-${commit.sha}`,
+        triggerPayload: githubCommitPayload(commit, cleanRepo),
+      });
+      if (created) console.log(`[polling] GitHub: queued run ${run.id} for new commit ${commit.sha.slice(0, 7)}`);
+      await advanceMarker(trigger, commit.sha);
     }
     return;
   }
@@ -273,38 +267,31 @@ async function pollGmailTrigger(trigger) {
     newMessages.push(m);
   }
 
-  await prisma.trigger.update({
-    where: { id: trigger.id },
-    data: { lastPollHash: latestMessageId },
-  });
-
+  // Oldest first; the marker moves only after each email's run is saved and queued.
+  // If an email can't be fetched or saved, stop here and pick it up on the next poll.
   for (const msgSummary of newMessages.reverse()) {
     try {
       const msgRes = await fetch(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msgSummary.id}?format=full`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );
-      if (!msgRes.ok) continue;
+      if (!msgRes.ok) {
+        console.warn(`[polling] Gmail message ${msgSummary.id} fetch failed (${msgRes.status}); will retry next poll`);
+        return;
+      }
 
       const msgData = await msgRes.json();
       const payload = gmailMessagePayload(msgData);
-
-      const idempotencyKey = `${trigger.id}-gmail-${msgData.id}`;
-      const run = await prisma.zapRun.create({
-        data: {
-          zapId: trigger.zapId,
-          status: "QUEUED",
-          idempotencyKey,
-          triggerPayload: payload,
-        },
+      const { run, created } = await createAndQueueRun(prisma, zapExecutionQueue, {
+        zapId: trigger.zapId,
+        idempotencyKey: `${trigger.id}-gmail-${msgData.id}`,
+        triggerPayload: payload,
       });
-
-      await zapExecutionQueue.add("execute-zap-run", { zapRunId: run.id });
-      console.log(`[polling] Gmail: queued run ${run.id} for message "${payload.email.subject || msgData.id}"`);
+      if (created) console.log(`[polling] Gmail: queued run ${run.id} for message "${payload.email.subject || msgData.id}"`);
+      await advanceMarker(trigger, msgSummary.id);
     } catch (err) {
-      if (err.code !== "P2002") {
-        console.error(`[polling] Error processing Gmail message ${msgSummary.id}:`, err.message);
-      }
+      console.error(`[polling] Error processing Gmail message ${msgSummary.id}; will retry next poll:`, err.message);
+      return;
     }
   }
 }
@@ -366,34 +353,20 @@ async function pollSlackTrigger(trigger) {
     newMessages.push(m);
   }
 
-  await prisma.trigger.update({
-    where: { id: trigger.id },
-    data: { lastPollHash: latestTs },
-  });
-
+  // Oldest first; the marker moves only after each message's run is saved and queued.
   const names = createSlackNameResolver(accessToken);
   for (const msg of newMessages.reverse()) {
     const payload = slackMessagePayload(msg, channelId, {
       userName: await names.userName(msg.user),
       channelName: await names.channelName(channelId),
     });
-
-    const idempotencyKey = `${trigger.id}-slack-${msg.ts}`;
-    try {
-      const run = await prisma.zapRun.create({
-        data: {
-          zapId: trigger.zapId,
-          status: "QUEUED",
-          idempotencyKey,
-          triggerPayload: payload,
-        },
-      });
-
-      await zapExecutionQueue.add("execute-zap-run", { zapRunId: run.id });
-      console.log(`[polling] Slack: queued run ${run.id} for new message`);
-    } catch (err) {
-      if (err.code !== "P2002") throw err;
-    }
+    const { run, created } = await createAndQueueRun(prisma, zapExecutionQueue, {
+      zapId: trigger.zapId,
+      idempotencyKey: `${trigger.id}-slack-${msg.ts}`,
+      triggerPayload: payload,
+    });
+    if (created) console.log(`[polling] Slack: queued run ${run.id} for new message`);
+    await advanceMarker(trigger, msg.ts);
   }
 }
 

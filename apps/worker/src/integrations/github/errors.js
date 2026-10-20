@@ -3,7 +3,17 @@
  * @param {Response} res
  * @param {{ action: string, repo: string, issueNumber?: number }} ctx
  */
-async function githubApiError(res, { action, repo, issueNumber }) {
+const { retryableError } = require("../../recovery");
+
+async function githubApiError(res, ctx) {
+  const err = await describeGithubError(res, ctx);
+  const tagged = retryableError(err.message, res.status);
+  // A 403 caused by the rate limit means the request was rejected, so it's safe to retry.
+  if (res.status === 403 && res.headers?.get?.("x-ratelimit-remaining") === "0") tagged.retryable = true;
+  return tagged;
+}
+
+async function describeGithubError(res, { action, repo, issueNumber }) {
   const data = await res.json().catch(() => ({}));
   const detail = data && data.message ? `: ${data.message}` : "";
   const target = issueNumber ? `Issue #${issueNumber} in ${repo}` : `Repository ${repo}`;

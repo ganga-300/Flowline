@@ -13,6 +13,8 @@ function describeSlackError(code) {
       return `Slack authorization failed (${code}). Please reconnect Slack in the Connections tab.`;
     case "missing_scope":
       return "Slack connection is missing a permission (missing_scope). Please reconnect Slack in the Connections tab.";
+    case "ratelimited":
+      return "Slack rate limit reached (ratelimited).";
     case "no_text":
       return "Slack message text is empty (no_text).";
     default:
@@ -20,4 +22,12 @@ function describeSlackError(code) {
   }
 }
 
-module.exports = { describeSlackError };
+/** Error for a failed Slack call; only "ratelimited" (request rejected) is safe to retry. */
+function slackApiError(code) {
+  const err = new Error(describeSlackError(code));
+  err.slackError = code;
+  err.retryable = code === "ratelimited";
+  return err;
+}
+
+module.exports = { describeSlackError, slackApiError };

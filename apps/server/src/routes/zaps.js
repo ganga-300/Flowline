@@ -4,6 +4,7 @@ const router = express.Router();
 const prisma = require("../prismaClient");
 const requireAuth = require("../middleware/auth");
 const { zapExecutionQueue } = require("../Queue");
+const { queueRun } = require("../../../worker/src/runQueue");
 
 // Every account referenced by the trigger or a step must belong to this user;
 // otherwise a Zap could act through someone else's Gmail/Slack/GitHub.
@@ -345,7 +346,7 @@ router.post("/:id/runs/:runId/retry", requireAuth, async (req, res) => {
       },
     });
 
-    await zapExecutionQueue.add("execute-zap-run", { zapRunId: newRun.id });
+    await queueRun(zapExecutionQueue, newRun);
 
     return res.status(202).json({
       success: true,
@@ -453,7 +454,7 @@ router.post("/:id/run", requireAuth, async (req, res) => {
       },
     });
 
-    await zapExecutionQueue.add("execute-zap-run", { zapRunId: run.id });
+    await queueRun(zapExecutionQueue, run);
 
     return res.status(202).json({ success: true, runId: run.id, message: "Zap triggered successfully" });
   } catch (err) {
