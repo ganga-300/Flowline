@@ -3,14 +3,17 @@ import { Logo } from "@/components/layout";
 
 const COLUMNS = [
   { title: "Product", links: [
-    { href: "#how-it-works", label: "How it works" },
-    { href: "#integrations", label: "Integrations" },
-    { href: "#workflows", label: "Workflows" },
-    { href: "#reliability", label: "Reliability" },
+    { href: "/#how-it-works", label: "How it works" },
+    { href: "/#integrations", label: "Integrations" },
+    { href: "/#workflows", label: "Workflows" },
+    { href: "/#reliability", label: "Reliability" },
   ] },
   { title: "Account", links: [
     { href: "/signup", label: "Sign up" },
     { href: "/login", label: "Log in" },
+  ] },
+  { title: "Legal", links: [
+    { href: "/privacy", label: "Privacy policy" },
   ] },
 ];
 
@@ -29,7 +32,7 @@ export function MarketingFooter() {
               <ul className="mt-3 space-y-2">
                 {col.links.map((l) => (
                   <li key={l.label}>
-                    {l.href.startsWith("#") ? (
+                    {l.href.includes("#") ? (
                       <a href={l.href} className="text-sm text-ink-muted hover:text-ink">{l.label}</a>
                     ) : (
                       <Link href={l.href} className="text-sm text-ink-muted hover:text-ink">{l.label}</Link>
