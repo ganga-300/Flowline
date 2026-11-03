@@ -40,6 +40,16 @@ const prisma = {
         .map((e) => ({ ...e, step: stepById(e.stepId) && { type: stepById(e.stepId).type, config: stepById(e.stepId).config } })),
     })),
     update: async ({ where, data }) => Object.assign(db.runs.find((r) => r.id === where.id), data),
+    // The sweep's compare-and-set claim: id + status + attempt count must all match.
+    updateMany: async ({ where, data }) => {
+      const matched = db.runs.filter((r) => r.id === where.id && where.status.in.includes(r.status)
+        && (where.recoveryAttempts === undefined || (r.recoveryAttempts ?? 0) === where.recoveryAttempts));
+      for (const r of matched) {
+        if (data.recoveryAttempts?.increment) r.recoveryAttempts = (r.recoveryAttempts ?? 0) + data.recoveryAttempts.increment;
+        else Object.assign(r, data);
+      }
+      return { count: matched.length };
+    },
   },
   step: { findMany: async ({ where }) => db.steps.filter((s) => s.zapId === where.zapId) },
   stepExecution: {

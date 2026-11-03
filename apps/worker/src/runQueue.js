@@ -10,6 +10,22 @@ const jobIdFor = (runId) => `zap-run-${runId}`;
 // The delayed job that continues a run after its Delay step (one per run and Delay step).
 const resumeJobIdFor = (runId, delayStepId) => `zap-run-${runId}-after-${delayStepId}`;
 
+/**
+ * How long BullMQ keeps finished jobs (set on the Worker, so it applies to jobs from every
+ * producer). BullMQ trims the completed/failed lists when another job finishes; waiting,
+ * delayed and active jobs aren't in those lists and are never removed.
+ * Removing a finished job frees its id: the same id can be added again later. That can't
+ * re-run a finished workflow - the worker skips runs that are already SUCCESS/FAILED/
+ * FILTERED, and queueRun callers only (re)queue runs that are still QUEUED.
+ *  - completed: 1 day / 2,000 jobs - far beyond the ~30 s in which a crashed job is re-run.
+ *  - failed: 7 days / 1,000 jobs - the recovery sweep replaces failed jobs within minutes,
+ *    and they stay inspectable for a week.
+ */
+const JOB_RETENTION = {
+  removeOnComplete: { age: 24 * 60 * 60, count: 2000 },
+  removeOnFail: { age: 7 * 24 * 60 * 60, count: 1000 },
+};
+
 async function queueRun(queue, run) {
   await queue.add("execute-zap-run", { zapRunId: run.id }, { jobId: jobIdFor(run.id) });
 }
@@ -42,4 +58,4 @@ async function requeueQueuedRuns(prisma, queue) {
   return waiting.length;
 }
 
-module.exports = { jobIdFor, resumeJobIdFor, queueRun, createAndQueueRun, requeueQueuedRuns };
+module.exports = { jobIdFor, resumeJobIdFor, JOB_RETENTION, queueRun, createAndQueueRun, requeueQueuedRuns };

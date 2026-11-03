@@ -15,7 +15,7 @@ const TokenBucket = require("./rateLimiter");
 const { getIntegrationHandler } = require("./integrations/registry");
 const { recordStepOutput, restoreStepOutputs } = require("./stepContext");
 const { runWithRetry, retryableError, planRecovery, planRetryCarryOver } = require("./recovery");
-const { resumeJobIdFor } = require("./runQueue");
+const { resumeJobIdFor, JOB_RETENTION } = require("./runQueue");
 const { startRecoveryScheduler } = require("./runRecovery");
 const { aiPromptTemplate } = require("./aiStep");
 const { executeHttpRequest } = require("./integrations/http/request");
@@ -437,7 +437,8 @@ const worker = new Worker(
   },
   // maxStalledCount: how many times a job may be recovered after a worker crash before
   // BullMQ gives up on it (default 1); crash recovery itself is handled above.
-  { connection, maxStalledCount: 3 }
+  // JOB_RETENTION: finished jobs are trimmed instead of kept in Redis forever (runQueue.js).
+  { connection, maxStalledCount: 3, ...JOB_RETENTION }
 );
 
 worker.on("error", (err) => console.error("[worker] connection error:", err));

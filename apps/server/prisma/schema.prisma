@@ -178,6 +178,11 @@ model ZapRun {
   // there are reused instead of being sent again.
   retryOfRunId        String?
 
+  // Times the recovery sweep (worker/src/runRecovery.js) re-queued this run after its job
+  // may already have run; at the limit (3) the run is marked FAILED. Only ever changed by a
+  // conditional update, so concurrent sweeps can't both count the same attempt.
+  recoveryAttempts    Int         @default(0)
+
   createdAt           DateTime    @default(now())
 
   stepExecutions      StepExecution[]
