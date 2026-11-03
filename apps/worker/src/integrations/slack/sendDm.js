@@ -1,4 +1,5 @@
 const prisma = require("../../prismaClient");
+const { fetchWithTimeout } = require("../../fetchWithTimeout");
 const { resolveTemplate } = require("../../conditions");
 const TokenBucket = require("../../rateLimiter");
 const { describeSlackError, slackApiError } = require("./errors");
@@ -42,7 +43,7 @@ async function executeSlackSendDm(step, context) {
 
   // If input looks like an email address, lookup the user ID via users.lookupByEmail
   if (userId.includes("@")) {
-    const lookupRes = await fetch(`https://slack.com/api/users.lookupByEmail?email=${encodeURIComponent(userId)}`, {
+    const lookupRes = await fetchWithTimeout(`https://slack.com/api/users.lookupByEmail?email=${encodeURIComponent(userId)}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     const lookupData = await lookupRes.json();
@@ -57,7 +58,7 @@ async function executeSlackSendDm(step, context) {
   }
 
   // Open / find conversation ID for DM
-  const openRes = await fetch("https://slack.com/api/conversations.open", {
+  const openRes = await fetchWithTimeout("https://slack.com/api/conversations.open", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -74,7 +75,7 @@ async function executeSlackSendDm(step, context) {
   const channelId = openData.channel.id;
 
   // Post message to the DM channel
-  const res = await fetch("https://slack.com/api/chat.postMessage", {
+  const res = await fetchWithTimeout("https://slack.com/api/chat.postMessage", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

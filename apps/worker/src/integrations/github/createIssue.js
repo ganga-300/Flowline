@@ -1,4 +1,5 @@
 const prisma = require("../../prismaClient");
+const { fetchWithTimeout } = require("../../fetchWithTimeout");
 const { resolveTemplate } = require("../../conditions");
 const { cleanRepoName } = require("../triggerPayloads");
 const { githubApiError } = require("./errors");
@@ -33,7 +34,7 @@ async function executeGitHubCreateIssue(step, context) {
     throw new Error("GitHub repository (owner/repo) and Issue Title are required");
   }
 
-  const res = await fetch(`https://api.github.com/repos/${repo}/issues`, {
+  const res = await fetchWithTimeout(`https://api.github.com/repos/${repo}/issues`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

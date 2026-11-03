@@ -1,4 +1,5 @@
 const express = require("express");
+const { fetchWithTimeout } = require("../../../worker/src/fetchWithTimeout");
 const router = express.Router();
 const requireAuth = require("../middleware/auth");
 const prisma = require("../prismaClient");
@@ -88,7 +89,7 @@ router.post("/", requireAuth, async (req, res) => {
       const { resolveTemplate } = require("../../../worker/src/conditions");
       const prompt = resolveTemplate(context, step.config?.prompt || step.config?.promptTemplate || "");
 
-      const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      const aiRes = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -221,7 +222,7 @@ router.post("/fetch-sample", requireAuth, async (req, res) => {
       }
 
       if (event === "new_push") {
-        const ghRes = await fetch(`https://api.github.com/repos/${cleanRepo}/commits?per_page=1`, { headers });
+        const ghRes = await fetchWithTimeout(`https://api.github.com/repos/${cleanRepo}/commits?per_page=1`, { headers });
         if (!ghRes.ok) {
           const errText = await ghRes.text().catch(() => "");
           return res.status(ghRes.status).json({
@@ -236,7 +237,7 @@ router.post("/fetch-sample", requireAuth, async (req, res) => {
       }
 
       // Default: new_issue
-      const ghRes = await fetch(`https://api.github.com/repos/${cleanRepo}/issues?state=all&sort=created&direction=desc&per_page=5`, { headers });
+      const ghRes = await fetchWithTimeout(`https://api.github.com/repos/${cleanRepo}/issues?state=all&sort=created&direction=desc&per_page=5`, { headers });
       if (!ghRes.ok) {
         const errText = await ghRes.text().catch(() => "");
         return res.status(ghRes.status).json({
@@ -267,7 +268,7 @@ router.post("/fetch-sample", requireAuth, async (req, res) => {
         url += `&q=${encodeURIComponent(query.trim())}`;
       }
 
-      let resGmail = await fetch(url, {
+      let resGmail = await fetchWithTimeout(url, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
 
@@ -275,7 +276,7 @@ router.post("/fetch-sample", requireAuth, async (req, res) => {
         try {
           const { refreshGoogleAccessToken } = require("../../../worker/src/integrations/google/refreshToken");
           accessToken = await refreshGoogleAccessToken(connection.id, connection.refreshToken);
-          resGmail = await fetch(url, {
+          resGmail = await fetchWithTimeout(url, {
             headers: { Authorization: `Bearer ${accessToken}` },
           });
         } catch (rfErr) {
@@ -292,7 +293,7 @@ router.post("/fetch-sample", requireAuth, async (req, res) => {
 
       // If query returned no messages, fallback to any message
       if (messages.length === 0 && query.trim()) {
-        const fallbackRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1`, {
+        const fallbackRes = await fetchWithTimeout(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
         if (fallbackRes.ok) {
@@ -306,7 +307,7 @@ router.post("/fetch-sample", requireAuth, async (req, res) => {
       }
 
       const msgSummary = messages[0];
-      const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msgSummary.id}?format=full`, {
+      const msgRes = await fetchWithTimeout(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msgSummary.id}?format=full`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
 
@@ -327,7 +328,7 @@ router.post("/fetch-sample", requireAuth, async (req, res) => {
       let channelId = config.channel || config.channelId;
 
       if (!channelId || channelId.startsWith("#")) {
-        const listRes = await fetch("https://slack.com/api/conversations.list?types=public_channel,private_channel", {
+        const listRes = await fetchWithTimeout("https://slack.com/api/conversations.list?types=public_channel,private_channel", {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
         const listData = await listRes.json().catch(() => ({}));

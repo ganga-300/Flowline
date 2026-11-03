@@ -1,4 +1,5 @@
 const prisma = require("../../prismaClient");
+const { fetchWithTimeout } = require("../../fetchWithTimeout");
 const { resolveTemplate } = require("../../conditions");
 const { cleanRepoName } = require("../triggerPayloads");
 const { githubApiError } = require("./errors");
@@ -42,7 +43,7 @@ async function executeGitHubAddComment(step, context) {
     throw new Error("Comment body is required");
   }
 
-  const res = await fetch(`https://api.github.com/repos/${repo}/issues/${issueNumber}/comments`, {
+  const res = await fetchWithTimeout(`https://api.github.com/repos/${repo}/issues/${issueNumber}/comments`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

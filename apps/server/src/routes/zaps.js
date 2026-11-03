@@ -5,6 +5,7 @@ const prisma = require("../prismaClient");
 const requireAuth = require("../middleware/auth");
 const { zapExecutionQueue } = require("../Queue");
 const { queueRun } = require("../../../worker/src/runQueue");
+const { validateTrigger } = require("../lib/triggerValidation");
 
 // Every account referenced by the trigger or a step must belong to this user;
 // otherwise a Zap could act through someone else's Gmail/Slack/GitHub.
@@ -66,6 +67,10 @@ router.post("/",requireAuth, async (req, res) => {
   if (!name || !trigger || !trigger.type) {
     return res.status(400).json({ error: "Name and trigger.type are required" });
   }
+  const triggerError = validateTrigger(trigger);
+  if (triggerError) {
+    return res.status(400).json({ error: triggerError });
+  }
 
   if (!(await ownsAllConnections(req.userId, trigger, steps))) {
     return res.status(400).json({ error: ACCOUNT_ERROR });
@@ -124,6 +129,10 @@ router.put("/:id", requireAuth, async (req, res) => {
     const { name, trigger, steps = [] } = req.body;
     if (!name || !trigger || !trigger.type) {
       return res.status(400).json({ error: "Name and trigger.type are required" });
+    }
+    const triggerError = validateTrigger(trigger);
+    if (triggerError) {
+      return res.status(400).json({ error: triggerError });
     }
 
     const existing = await prisma.zap.findFirst({

@@ -1,5 +1,5 @@
 require("dotenv").config();
-const crypto = require("crypto");
+const { fetchWithTimeout } = require("./fetchWithTimeout");
 const { Queue } = require("bullmq");
 const IORedis = require("ioredis");
 const { redisUrl } = require("../../server/src/config");
@@ -57,7 +57,7 @@ async function pollGitHubTrigger(trigger) {
   if (event === "new_push") {
     // Poll for new commits
     const url = `https://api.github.com/repos/${cleanRepo}/commits?per_page=10`;
-    const res = await fetch(url, { headers });
+    const res = await fetchWithTimeout(url, { headers });
     if (!res.ok) {
       console.log(`[polling] GitHub commits fetch failed for ${cleanRepo}: ${res.status}`);
       return;
@@ -109,7 +109,7 @@ async function pollGitHubTrigger(trigger) {
 
   while (page <= MAX_PAGES) {
     const url = `https://api.github.com/repos/${cleanRepo}/issues?state=all&sort=created&direction=desc&per_page=${PER_PAGE}&page=${page}`;
-    const res = await fetch(url, { headers });
+    const res = await fetchWithTimeout(url, { headers });
     if (!res.ok) {
       if (res.status === 403) {
         console.warn(`[polling] GitHub API rate limit reached for ${cleanRepo}.`);
@@ -223,7 +223,7 @@ async function pollGmailTrigger(trigger) {
   const query = trigger.config?.query || trigger.config?.q || "is:unread";
   const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10&q=${encodeURIComponent(query)}`;
 
-  let res = await fetch(url, {
+  let res = await fetchWithTimeout(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 
@@ -231,7 +231,7 @@ async function pollGmailTrigger(trigger) {
     console.log(`[polling] Gmail token expired for trigger ${trigger.id}. Refreshing...`);
     try {
       accessToken = await refreshGoogleAccessToken(trigger.connection.id, trigger.connection.refreshToken);
-      res = await fetch(url, {
+      res = await fetchWithTimeout(url, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
     } catch (refreshErr) {
@@ -272,7 +272,7 @@ async function pollGmailTrigger(trigger) {
   // If an email can't be fetched or saved, stop here and pick it up on the next poll.
   for (const msgSummary of newMessages.reverse()) {
     try {
-      const msgRes = await fetch(
+      const msgRes = await fetchWithTimeout(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msgSummary.id}?format=full`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );
@@ -311,7 +311,7 @@ async function pollSlackTrigger(trigger) {
 
   // If channel is like #general, lookup channel ID
   if (channelId.startsWith("#")) {
-    const listRes = await fetch("https://slack.com/api/conversations.list?types=public_channel,private_channel", {
+    const listRes = await fetchWithTimeout("https://slack.com/api/conversations.list?types=public_channel,private_channel", {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     const listData = await listRes.json().catch(() => ({}));
@@ -372,8 +372,9 @@ async function pollSlackTrigger(trigger) {
 }
 
 /**
- * Fetches all active POLLING triggers, executes API checks for supported integrations,
- * hashes the response, and queues a ZapRun if new data is detected.
+ * Fetches all active POLLING triggers, checks GitHub, Gmail or Slack for new items and
+ * queues a ZapRun per new item. Any other polling trigger (e.g. a legacy generic URL
+ * poller, which the API no longer accepts) is skipped: nothing is fetched or run.
  */
 async function runPollingCycle() {
   console.log("[polling] Starting polling cycle...");
@@ -410,51 +411,7 @@ async function runPollingCycle() {
         continue;
       }
 
-
-
-      // 5. Generic HTTP polling fallback
-      const url = trigger.config?.url;
-      if (!url) continue;
-
-      const headers = trigger.config?.headers || {};
-      const res = await fetch(url, {
-        method: "GET",
-        headers: { "Content-Type": "application/json", ...headers },
-      });
-
-      if (!res.ok) {
-        console.log(`[polling] Trigger ${trigger.id} fetch failed: ${res.status}`);
-        continue;
-      }
-
-      const data = await res.json();
-      if (!data) continue;
-
-      const dataStr = JSON.stringify(data);
-      const hash = crypto.createHash("sha256").update(dataStr).digest("hex");
-
-      if (hash === trigger.lastPollHash) continue;
-
-      await prisma.trigger.update({
-        where: { id: trigger.id },
-        data: { lastPollHash: hash },
-      });
-
-      const idempotencyKey = `${trigger.id}-poll-${hash}`;
-      try {
-        const run = await prisma.zapRun.create({
-          data: {
-            zapId: trigger.zapId,
-            status: "QUEUED",
-            idempotencyKey,
-            triggerPayload: data,
-          },
-        });
-        await zapExecutionQueue.add("execute-zap-run", { zapRunId: run.id });
-        console.log(`[polling] HTTP Trigger ${trigger.id}: new data detected, queued run ${run.id}`);
-      } catch (err) {
-        if (err.code !== "P2002") throw err;
-      }
+      console.warn(`[polling] Trigger ${trigger.id} (Zap ${trigger.zapId}) has unsupported provider "${provider}"; skipped. Disable or edit this Zap.`);
     } catch (err) {
       console.error(`[polling] Error processing trigger ${trigger.id}:`, err.message);
     }

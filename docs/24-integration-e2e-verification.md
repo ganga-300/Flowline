@@ -28,8 +28,8 @@ Note: the first **Run** on a new polling Zap only records a starting point.
 | # | Workflow | Steps | Expected | Result | Run ID |
 |---|---|---|---|---|---|
 | A | GitHub New Issue -> Slack Send Message | Publish, Run, create issue, Run | Slack message with issue title/#/author/link | Verified by user 2026-10-20 | |
-| B | Gmail New Email -> GitHub Create Issue | Query e.g. `subject:flowline-test`; publish, Run, send matching email, Run | Issue titled with the email subject, body = email text | | |
-| C | Slack New Message -> Gmail Send Email | Public channel; publish, Run, post a message with an emoji, Run | Email arrives; subject not garbled; line breaks kept | | |
+| B | Gmail New Email -> GitHub Create Issue | Query e.g. `subject:flowline-test`; publish, Run, send matching email, Run | Issue titled with the email subject, body = email text | Pass - verified by user on the deployed app (Vercel + Render), 2026-10-24 | |
+| C | Slack New Message -> Gmail Send Email | Public channel; publish, Run, post a message with an emoji, Run | Email arrives; subject not garbled; line breaks kept | Pass - verified by user on the deployed app, 2026-10-24 | |
 | D | GitHub New Push -> GitHub Add Comment | Issue number like `#1`; push a commit, Run | Comment with the commit message on that issue | | |
 | E | Any trigger -> Slack Send DM | Pick a user | DM delivered | | |
 | F | Multi-step: GitHub New Issue -> GitHub Create Issue -> Slack Send Message | In step 2 insert `Step 1 -> Issue URL` from the picker | Slack text contains the URL of the issue created in step 1 | | |
@@ -43,9 +43,11 @@ Note: the first **Run** on a new polling Zap only records a starting point.
 | E3 | Gmail send after the access token expired (>1 hour since connecting) | Send succeeds (token refreshed) | |
 | E4 | Run on a polling Zap with nothing new | "No new ... since the last check"; no run created | |
 
-## Known gaps (not covered by this milestone)
-- Slack messages show the user ID (e.g. `U012...`), not the display name.
+## Known gaps
 - Slack Send DM recipient is chosen from a dropdown; typing an email or a variable isn't supported in the UI yet.
-- A Zap can't be edited after publishing; create a new one to change it.
-- Action steps are retried up to 3 times on failure, which could repeat a send if a provider
-  accepted the request but the response was lost.
+- Gmail uses Google's restricted scopes and the Google app is unverified, so Google shows an
+  "unverified app" warning when connecting Gmail and allows at most 100 new users.
+
+Resolved since this checklist was written: Slack display names (not IDs), editing published Zaps,
+retries only for failures where the provider certainly did not act (no duplicate sends), and
+"Retry from failed step".

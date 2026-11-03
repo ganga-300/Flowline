@@ -4,13 +4,15 @@
  * Slack connection already has. Failures fall back to the id - a missing name must
  * never fail a run. One resolver per poll caches lookups.
  */
+const { fetchWithTimeout } = require("../../fetchWithTimeout");
+
 function createSlackNameResolver(accessToken) {
   const userCache = new Map();
   const channelCache = new Map();
 
   async function callSlack(method, params) {
     try {
-      const res = await fetch(`https://slack.com/api/${method}?${new URLSearchParams(params)}`, {
+      const res = await fetchWithTimeout(`https://slack.com/api/${method}?${new URLSearchParams(params)}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       const data = await res.json();
