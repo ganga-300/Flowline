@@ -1,4 +1,5 @@
 require("dotenv").config();
+const { fetchWithTimeout } = require("./fetchWithTimeout");
 const { Queue } = require("bullmq");
 const IORedis = require("ioredis");
 const { redisUrl } = require("../../server/src/config");
@@ -56,7 +57,7 @@ async function pollGitHubTrigger(trigger) {
   if (event === "new_push") {
     // Poll for new commits
     const url = `https://api.github.com/repos/${cleanRepo}/commits?per_page=10`;
-    const res = await fetch(url, { headers });
+    const res = await fetchWithTimeout(url, { headers });
     if (!res.ok) {
       console.log(`[polling] GitHub commits fetch failed for ${cleanRepo}: ${res.status}`);
       return;
@@ -108,7 +109,7 @@ async function pollGitHubTrigger(trigger) {
 
   while (page <= MAX_PAGES) {
     const url = `https://api.github.com/repos/${cleanRepo}/issues?state=all&sort=created&direction=desc&per_page=${PER_PAGE}&page=${page}`;
-    const res = await fetch(url, { headers });
+    const res = await fetchWithTimeout(url, { headers });
     if (!res.ok) {
       if (res.status === 403) {
         console.warn(`[polling] GitHub API rate limit reached for ${cleanRepo}.`);
@@ -222,7 +223,7 @@ async function pollGmailTrigger(trigger) {
   const query = trigger.config?.query || trigger.config?.q || "is:unread";
   const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10&q=${encodeURIComponent(query)}`;
 
-  let res = await fetch(url, {
+  let res = await fetchWithTimeout(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 
@@ -230,7 +231,7 @@ async function pollGmailTrigger(trigger) {
     console.log(`[polling] Gmail token expired for trigger ${trigger.id}. Refreshing...`);
     try {
       accessToken = await refreshGoogleAccessToken(trigger.connection.id, trigger.connection.refreshToken);
-      res = await fetch(url, {
+      res = await fetchWithTimeout(url, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
     } catch (refreshErr) {
@@ -271,7 +272,7 @@ async function pollGmailTrigger(trigger) {
   // If an email can't be fetched or saved, stop here and pick it up on the next poll.
   for (const msgSummary of newMessages.reverse()) {
     try {
-      const msgRes = await fetch(
+      const msgRes = await fetchWithTimeout(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msgSummary.id}?format=full`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );
@@ -310,7 +311,7 @@ async function pollSlackTrigger(trigger) {
 
   // If channel is like #general, lookup channel ID
   if (channelId.startsWith("#")) {
-    const listRes = await fetch("https://slack.com/api/conversations.list?types=public_channel,private_channel", {
+    const listRes = await fetchWithTimeout("https://slack.com/api/conversations.list?types=public_channel,private_channel", {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     const listData = await listRes.json().catch(() => ({}));

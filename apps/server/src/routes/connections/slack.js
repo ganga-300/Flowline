@@ -1,4 +1,5 @@
 const express = require("express");
+const { fetchWithTimeout } = require("../../../../worker/src/fetchWithTimeout");
 const jwt = require("jsonwebtoken");
 const router = express.Router();
 const prisma = require("../../prismaClient");
@@ -96,7 +97,7 @@ router.get("/callback", async (req, res) => {
   const redirectUri = process.env.SLACK_REDIRECT_URI || "http://localhost:4000/connections/slack/callback";
 
   try {
-    const tokenRes = await fetch("https://slack.com/api/oauth.v2.access", {
+    const tokenRes = await fetchWithTimeout("https://slack.com/api/oauth.v2.access", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({

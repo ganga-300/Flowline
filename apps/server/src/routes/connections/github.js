@@ -1,4 +1,5 @@
 const express = require("express");
+const { fetchWithTimeout } = require("../../../../worker/src/fetchWithTimeout");
 const jwt = require("jsonwebtoken");
 const router = express.Router();
 const prisma = require("../../prismaClient");
@@ -84,7 +85,7 @@ router.get("/callback", async (req, res) => {
   const redirectUri = process.env.GITHUB_REDIRECT_URI || "http://localhost:4000/connections/github/callback";
 
   try {
-    const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+    const tokenRes = await fetchWithTimeout("https://github.com/login/oauth/access_token", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -107,7 +108,7 @@ router.get("/callback", async (req, res) => {
     // Fetch user profile from GitHub
     let username = "";
     try {
-      const userRes = await fetch("https://api.github.com/user", {
+      const userRes = await fetchWithTimeout("https://api.github.com/user", {
         headers: {
           Authorization: `Bearer ${tokenData.access_token}`,
           "User-Agent": "Flowline-App",
@@ -176,11 +177,11 @@ router.get("/repos", requireAuth, async (req, res) => {
     if (owner && owner.trim()) {
       const cleanOwner = encodeURIComponent(owner.trim());
       let url = `https://api.github.com/orgs/${cleanOwner}/repos?per_page=100&sort=updated`;
-      let ghRes = await fetch(url, { headers });
+      let ghRes = await fetchWithTimeout(url, { headers });
 
       if (!ghRes.ok) {
         url = `https://api.github.com/users/${cleanOwner}/repos?per_page=100&sort=updated`;
-        ghRes = await fetch(url, { headers });
+        ghRes = await fetchWithTimeout(url, { headers });
       }
 
       if (!ghRes.ok) {
@@ -214,7 +215,7 @@ router.get("/repos", requireAuth, async (req, res) => {
     }
 
     const url = "https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member";
-    const ghRes = await fetch(url, { headers });
+    const ghRes = await fetchWithTimeout(url, { headers });
 
     if (!ghRes.ok) {
       return res.status(ghRes.status).json({

@@ -1,4 +1,5 @@
 const prisma = require("../../prismaClient");
+const { fetchWithTimeout } = require("../../fetchWithTimeout");
 
 /**
  * Refreshes an expired Google OAuth access token using the stored refresh token
@@ -16,7 +17,7 @@ async function refreshGoogleAccessToken(connectionId, refreshToken) {
     throw new Error("Cannot refresh Google token: GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET is missing from environment");
   }
 
-  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+  const tokenRes = await fetchWithTimeout("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({

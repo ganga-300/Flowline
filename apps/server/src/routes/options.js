@@ -1,4 +1,5 @@
 const express = require("express");
+const { fetchWithTimeout } = require("../../../worker/src/fetchWithTimeout");
 const router = express.Router();
 const prisma = require("../prismaClient");
 const requireAuth = require("../middleware/auth");
@@ -24,7 +25,7 @@ router.get("/:id/options", requireAuth, async (req, res) => {
     const fail = (message) => res.status(502).json({ error: message, options: [] });
 
     if (type === "slack_channels") {
-      const slackRes = await fetch(
+      const slackRes = await fetchWithTimeout(
         "https://slack.com/api/conversations.list?types=public_channel,private_channel&exclude_archived=true&limit=1000",
         { headers: { Authorization: `Bearer ${connection.accessToken}` } }
       );
@@ -37,7 +38,7 @@ router.get("/:id/options", requireAuth, async (req, res) => {
     }
 
     if (type === "slack_users") {
-      const slackRes = await fetch("https://slack.com/api/users.list", {
+      const slackRes = await fetchWithTimeout("https://slack.com/api/users.list", {
         headers: { Authorization: `Bearer ${connection.accessToken}` },
       });
       const data = await slackRes.json().catch(() => ({}));
@@ -54,7 +55,7 @@ router.get("/:id/options", requireAuth, async (req, res) => {
     }
 
     if (type === "gmail_labels") {
-      const gmailRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/labels", {
+      const gmailRes = await fetchWithTimeout("https://gmail.googleapis.com/gmail/v1/users/me/labels", {
         headers: { Authorization: `Bearer ${connection.accessToken}` },
       });
       const data = await gmailRes.json().catch(() => ({}));
@@ -66,7 +67,7 @@ router.get("/:id/options", requireAuth, async (req, res) => {
     }
 
     if (type === "github_repos") {
-      const reposRes = await fetch("https://api.github.com/user/repos?per_page=100&sort=updated", {
+      const reposRes = await fetchWithTimeout("https://api.github.com/user/repos?per_page=100&sort=updated", {
         headers: {
           Authorization: `Bearer ${connection.accessToken}`,
           "User-Agent": "Flowline-App",

@@ -6,10 +6,11 @@
  */
 
 const { describeSlackError } = require("./errors");
+const { fetchWithTimeout } = require("../../fetchWithTimeout");
 
 async function fetchChannelHistory(accessToken, channelId, { limit = 10 } = {}) {
   const read = async () => {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://slack.com/api/conversations.history?channel=${encodeURIComponent(channelId)}&limit=${limit}`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
@@ -19,7 +20,7 @@ async function fetchChannelHistory(accessToken, channelId, { limit = 10 } = {}) 
   let data = await read();
 
   if (!data.ok && data.error === "not_in_channel") {
-    const joinRes = await fetch("https://slack.com/api/conversations.join", {
+    const joinRes = await fetchWithTimeout("https://slack.com/api/conversations.join", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
       body: JSON.stringify({ channel: channelId }),

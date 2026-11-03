@@ -1,4 +1,5 @@
 const prisma = require("../../prismaClient");
+const { fetchWithTimeout } = require("../../fetchWithTimeout");
 const { resolveTemplate } = require("../../conditions");
 const TokenBucket = require("../../rateLimiter");
 const { slackApiError } = require("./errors");
@@ -37,7 +38,7 @@ async function executeSlackSendMessage(step, context) {
 
   // 1. Direct Webhook execution if specified
   if (webhookUrl) {
-    const res = await fetch(webhookUrl, {
+    const res = await fetchWithTimeout(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text, channel }),
@@ -56,7 +57,7 @@ async function executeSlackSendMessage(step, context) {
     throw new Error(`Slack step is missing connected account or OAuth token`);
   }
 
-  const res = await fetch("https://slack.com/api/chat.postMessage", {
+  const res = await fetchWithTimeout("https://slack.com/api/chat.postMessage", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

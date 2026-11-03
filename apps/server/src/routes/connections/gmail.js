@@ -1,4 +1,5 @@
 const express = require("express");
+const { fetchWithTimeout } = require("../../../../worker/src/fetchWithTimeout");
 const jwt = require("jsonwebtoken");
 const router = express.Router();
 const prisma = require("../../prismaClient");
@@ -102,7 +103,7 @@ router.get("/callback", async (req, res) => {
 
   try {
     // 1. Server-side authorization code exchange for tokens
-    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+    const tokenRes = await fetchWithTimeout("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -125,7 +126,7 @@ router.get("/callback", async (req, res) => {
     let accountEmail = "";
     if (tokenData.access_token) {
       try {
-        const userInfoRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+        const userInfoRes = await fetchWithTimeout("https://www.googleapis.com/oauth2/v2/userinfo", {
           headers: { Authorization: `Bearer ${tokenData.access_token}` },
         });
         if (userInfoRes.ok) {

@@ -1,4 +1,5 @@
 const prisma = require("../../prismaClient");
+const { fetchWithTimeout } = require("../../fetchWithTimeout");
 const { resolveTemplate } = require("../../conditions");
 const { refreshGoogleAccessToken } = require("../google/refreshToken");
 const { retryableError } = require("../../recovery");
@@ -106,7 +107,7 @@ async function executeGmailSendEmail(step, context) {
   const encodedRaw = base64urlEncode(rawMime);
 
   // 4. Send email via Gmail API (handling 401 token refresh retry if needed)
-  let res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+  let res = await fetchWithTimeout("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -121,7 +122,7 @@ async function executeGmailSendEmail(step, context) {
     accessToken = await refreshGoogleAccessToken(connectionId, connection.refreshToken);
 
     // Retry sending message with refreshed token
-    res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    res = await fetchWithTimeout("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

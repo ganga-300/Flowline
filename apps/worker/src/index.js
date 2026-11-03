@@ -18,6 +18,7 @@ const { runWithRetry, retryableError, planRecovery, planRetryCarryOver } = requi
 const { requeueQueuedRuns } = require("./runQueue");
 const { aiPromptTemplate } = require("./aiStep");
 const { executeHttpRequest } = require("./integrations/http/request");
+const { fetchWithTimeout } = require("./fetchWithTimeout");
 const { startPollingScheduler, stopPollingScheduler, waitForPollingCycle } = require("./pollingCron");
 
 const slackBucket = new TokenBucket(5, 1); // 5 tokens capacity, 1 token/second refill
@@ -61,7 +62,7 @@ async function executeAiStep(step) {
 
   const prompt = resolveTemplate(step._context, aiPromptTemplate(step.config));
 
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const res = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
