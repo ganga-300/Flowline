@@ -14,8 +14,8 @@ stubModule("bullmq", { Queue: class { async add() {} } });
 stubModule("ioredis", class {});
 
 const triggers = () => [
-  { id: "t_hang", zapId: "z1", type: "POLLING", lastPollHash: "1", connection: null, config: { provider: "github", event: "new_issue", repo: "octo/hangs" } },
-  { id: "t_ok", zapId: "z2", type: "POLLING", lastPollHash: "1", connection: null, config: { provider: "github", event: "new_issue", repo: "octo/fine" } },
+  { id: "t_hang", zapId: "z1", type: "POLLING", lastPollHash: "n:1", connection: null, config: { provider: "github", event: "new_issue", repo: "octo/hangs" } },
+  { id: "t_ok", zapId: "z2", type: "POLLING", lastPollHash: "n:1", connection: null, config: { provider: "github", event: "new_issue", repo: "octo/fine" } },
 ];
 let markerUpdates;
 stubModule(path.join(workerSrc, "prismaClient"), {
@@ -51,7 +51,8 @@ afterEach(() => {
   global.fetch = realFetch;
 });
 
-const polled = (repo) => fetchCalls.filter((u) => u.includes(repo)).length;
+// Requests for the issue list (each poll also checks the next issue number, which isn't counted).
+const polled = (repo) => fetchCalls.filter((u) => u.includes(repo) && u.includes("/issues?")).length;
 
 test("a hanging provider times out and the rest of the cycle still runs", async () => {
   const started = Date.now();

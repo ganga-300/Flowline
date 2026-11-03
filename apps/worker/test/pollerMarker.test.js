@@ -27,13 +27,9 @@ stubModule(path.join(workerSrc, "prismaClient"), {
   },
 });
 
-const b64 = (s) => Buffer.from(s).toString("base64");
 global.fetch = async (url) => {
   const u = String(url);
   const json = (b) => ({ ok: true, status: 200, json: async () => b });
-  if (u.includes("/commits")) return json(["c3", "c2", "c1", "c0"].map((sha) => ({ sha, html_url: sha, commit: { message: sha, author: { name: "a" } } })));
-  if (/messages\/m\d/.test(u)) { const id = u.match(/messages\/(m\d)/)[1]; return json({ id, threadId: id, snippet: id, payload: { headers: [{ name: "Subject", value: id }], body: { data: b64(id) } } }); }
-  if (u.includes("gmail.googleapis.com")) return json({ messages: [{ id: "m3" }, { id: "m2" }, { id: "m1" }, { id: "m0" }] });
   if (u.includes("conversations.history")) return json({ ok: true, messages: ["3", "2", "1", "0"].map((t) => ({ type: "message", text: t, user: "U1", ts: `100.${t}` })) });
   if (u.includes("users.info") || u.includes("conversations.info")) return json({ ok: false });
   throw new Error(`Unexpected fetch ${u}`);
@@ -42,8 +38,8 @@ global.fetch = async (url) => {
 const poller = require("../src/pollingCron");
 const conn = { id: "c", accessToken: "t", refreshToken: null };
 const cases = {
-  "GitHub new_push": { fn: "pollGitHubTrigger", start: "c0", config: { provider: "github", event: "new_push", repo: "o/r" }, second: (d) => d.idempotencyKey.endsWith("c2"), firstId: "c1", lastId: "c3" },
-  "Gmail new_email": { fn: "pollGmailTrigger", start: "m0", config: { provider: "gmail" }, second: (d) => d.idempotencyKey.endsWith("m2"), firstId: "m1", lastId: "m3" },
+  // Gmail and GitHub pushes move their checkpoint only after the whole batch is queued:
+  // see gmailPolling.test.js and githubPolling.test.js.
   "Slack new_message": { fn: "pollSlackTrigger", start: "100.0", config: { provider: "slack", channel: "C1" }, second: (d) => d.idempotencyKey.endsWith("100.2"), firstId: "100.1", lastId: "100.3" },
 };
 

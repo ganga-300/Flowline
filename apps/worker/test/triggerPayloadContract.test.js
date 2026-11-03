@@ -54,6 +54,7 @@ const fixtures = {
       commit: { message: "Fix login", author: { name: "Alice", email: "alice@example.com", date: "2026-10-20T10:00:00Z" } } },
     { sha: "aaa111", html_url: "https://github.com/octo/demo/commit/aaa111", commit: { message: "Init", author: { name: "Bob" } } },
   ],
+  gmailHistory: { history: [{ id: "101", messagesAdded: [{ message: { id: "m2", threadId: "t2" } }] }], historyId: "101" },
   gmailList: { messages: [{ id: "m2", threadId: "t2" }, { id: "m1", threadId: "t1" }] },
   gmailMessage: {
     id: "m2", threadId: "t2", snippet: "Hi team, the invoice...",
@@ -80,6 +81,8 @@ global.fetch = async (url) => {
   const json = (body) => ({ ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) });
   if (u.includes("api.github.com/repos/octo/demo/issues")) return json(fixtures.issues);
   if (u.includes("api.github.com/repos/octo/demo/commits")) return json(fixtures.commits);
+  if (u.includes("api.github.com/repos/octo/demo/compare/aaa111...bbb222")) return json({ status: "ahead", total_commits: 1, commits: [fixtures.commits[0]] });
+  if (u.includes("gmail.googleapis.com/gmail/v1/users/me/history")) return json(fixtures.gmailHistory);
   if (u.includes("gmail.googleapis.com/gmail/v1/users/me/messages/m2")) return json(fixtures.gmailMessage);
   if (u.includes("gmail.googleapis.com/gmail/v1/users/me/messages")) return json(fixtures.gmailList);
   if (u.includes("slack.com/api/conversations.history")) return json(fixtures.slackHistory);
@@ -122,7 +125,7 @@ const cases = [
   },
   {
     name: "Gmail new_email",
-    poll: () => pollOnce(poller.pollGmailTrigger, { lastPollHash: "m1", config: { provider: "gmail", query: "is:unread" } }),
+    poll: () => pollOnce(poller.pollGmailTrigger, { lastPollHash: "100:1729400000", config: { provider: "gmail", query: "is:unread" } }),
     sample: () => fetchSample({ provider: "gmail", event: "new_email", config: { query: "is:unread" }, connectionId: "conn_1" }),
     spot: (p) => { assert.equal(p.email.subject, "Invoice #42"); assert.equal(p.email.from, "Ana <ana@example.com>"); assert.equal(p.email.body, "Hi team, the invoice is attached."); },
   },
