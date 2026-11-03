@@ -1,5 +1,4 @@
 require("dotenv").config();
-const crypto = require("crypto");
 const { Queue } = require("bullmq");
 const IORedis = require("ioredis");
 const { redisUrl } = require("../../server/src/config");
@@ -372,8 +371,9 @@ async function pollSlackTrigger(trigger) {
 }
 
 /**
- * Fetches all active POLLING triggers, executes API checks for supported integrations,
- * hashes the response, and queues a ZapRun if new data is detected.
+ * Fetches all active POLLING triggers, checks GitHub, Gmail or Slack for new items and
+ * queues a ZapRun per new item. Any other polling trigger (e.g. a legacy generic URL
+ * poller, which the API no longer accepts) is skipped: nothing is fetched or run.
  */
 async function runPollingCycle() {
   console.log("[polling] Starting polling cycle...");
@@ -410,51 +410,7 @@ async function runPollingCycle() {
         continue;
       }
 
-
-
-      // 5. Generic HTTP polling fallback
-      const url = trigger.config?.url;
-      if (!url) continue;
-
-      const headers = trigger.config?.headers || {};
-      const res = await fetch(url, {
-        method: "GET",
-        headers: { "Content-Type": "application/json", ...headers },
-      });
-
-      if (!res.ok) {
-        console.log(`[polling] Trigger ${trigger.id} fetch failed: ${res.status}`);
-        continue;
-      }
-
-      const data = await res.json();
-      if (!data) continue;
-
-      const dataStr = JSON.stringify(data);
-      const hash = crypto.createHash("sha256").update(dataStr).digest("hex");
-
-      if (hash === trigger.lastPollHash) continue;
-
-      await prisma.trigger.update({
-        where: { id: trigger.id },
-        data: { lastPollHash: hash },
-      });
-
-      const idempotencyKey = `${trigger.id}-poll-${hash}`;
-      try {
-        const run = await prisma.zapRun.create({
-          data: {
-            zapId: trigger.zapId,
-            status: "QUEUED",
-            idempotencyKey,
-            triggerPayload: data,
-          },
-        });
-        await zapExecutionQueue.add("execute-zap-run", { zapRunId: run.id });
-        console.log(`[polling] HTTP Trigger ${trigger.id}: new data detected, queued run ${run.id}`);
-      } catch (err) {
-        if (err.code !== "P2002") throw err;
-      }
+      console.warn(`[polling] Trigger ${trigger.id} (Zap ${trigger.zapId}) has unsupported provider "${provider}"; skipped. Disable or edit this Zap.`);
     } catch (err) {
       console.error(`[polling] Error processing trigger ${trigger.id}:`, err.message);
     }
