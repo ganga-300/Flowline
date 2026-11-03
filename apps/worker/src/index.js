@@ -15,7 +15,8 @@ const TokenBucket = require("./rateLimiter");
 const { getIntegrationHandler } = require("./integrations/registry");
 const { recordStepOutput, restoreStepOutputs } = require("./stepContext");
 const { runWithRetry, retryableError, planRecovery, planRetryCarryOver } = require("./recovery");
-const { requeueQueuedRuns } = require("./runQueue");
+const { resumeJobIdFor } = require("./runQueue");
+const { startRecoveryScheduler } = require("./runRecovery");
 const { aiPromptTemplate } = require("./aiStep");
 const { executeHttpRequest } = require("./integrations/http/request");
 const { fetchWithTimeout } = require("./fetchWithTimeout");
@@ -141,7 +142,8 @@ async function markSkipped(step, allSteps, zapRunId) {
 // Executes an ordered list of sibling steps against the shared context.
 // Returns { filtered: true } if a filter stopped the run, or { done: true }
 // when the whole list completed normally.
-async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterStepId, completedStepIds = new Set()) {
+// delayStartedAt: Delay steps this run already started (step id -> Date), e.g. before a crash.
+async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterStepId, completedStepIds = new Set(), delayStartedAt = new Map()) {
   let resuming = !!resumeAfterStepId; // true agar resume ho raha hai, warna false
   for (const step of steps) {
     if (resuming) {
@@ -156,6 +158,13 @@ async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterS
     }
     if (step.type === "DELAY") {
       const seconds = step.config.seconds || 60;
+      // Already started before a crash (the job is being re-run): keep that start time, so
+      // the wait isn't restarted and the run trace doesn't show the Delay twice.
+      const startedAt = delayStartedAt.get(step.id);
+      if (startedAt) {
+        const remainingMs = Math.max(0, new Date(startedAt).getTime() + seconds * 1000 - Date.now());
+        return { paused: { resumeAfterStepId: step.id, delayMs: remainingMs } };
+      }
       await prisma.stepExecution.create({
         data: {
           zapRunId,
@@ -294,6 +303,12 @@ async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterS
     }
   }
 
+  // Resuming after a Delay step that's no longer in the Zap (edited while the run waited):
+  // the steps after it can't be identified - fail clearly instead of finishing as a success
+  // with nothing run.
+  if (resuming) {
+    throw new Error("The Delay step this run was waiting on was removed from the Zap, so the steps after it were not run. Use Retry run to run the Zap again.");
+  }
   return { done: true };
 }
 
@@ -369,14 +384,21 @@ const worker = new Worker(
         });
       }
 
-      const result = await executeStepList(topLevel, allSteps, context, zapRunId, resumeAfterStepId, recovery.completedStepIds);
+      // Delays this run already started here (not ones reused by "Retry from failed step").
+      const delayStartedAt = new Map();
+      for (const e of priorExecutions) {
+        const isDelay = allSteps.find((s) => s.id === e.stepId)?.type === "DELAY";
+        if (isDelay && e.status === "SUCCESS" && !e.reusedFromRunId && !delayStartedAt.has(e.stepId)) delayStartedAt.set(e.stepId, e.createdAt);
+      }
+      const result = await executeStepList(topLevel, allSteps, context, zapRunId, resumeAfterStepId, recovery.completedStepIds, delayStartedAt);
 
       if (result.paused) {
         await zapExecutionQueue.add(
           "resume-zap-run",
           { zapRunId, resumeAfterStepId: result.paused.resumeAfterStepId },
-          // Fixed jobId: if this job is re-run after a crash, the resume isn't queued twice.
-          { delay: result.paused.delayMs, jobId: `zap-run-${zapRunId}-after-${result.paused.resumeAfterStepId}` }
+          // Fixed jobId: if this job is re-run after a crash, the resume isn't queued twice
+          // (and the recovery sweep rebuilds it under the same id if Redis loses it).
+          { delay: result.paused.delayMs, jobId: resumeJobIdFor(zapRunId, result.paused.resumeAfterStepId) }
         );
         return; // run stays RUNNING in the database until the resume completes
       }
@@ -422,11 +444,15 @@ worker.on("error", (err) => console.error("[worker] connection error:", err));
 
 console.log("Worker started, listening for jobs...");
 
-// Runs created but never queued (e.g. a crash between saving the run and queueing it) are
-// queued now. Job ids are per run, so runs that already have a job are not queued twice.
-requeueQueuedRuns(prisma, zapExecutionQueue)
-  .then((n) => n && console.log(`[worker] re-queued ${n} waiting run(s) on startup`))
-  .catch((err) => console.error("[worker] startup re-queue failed:", err.message));
+// Unfinished runs whose BullMQ job was lost (a crash between saving and queueing, Redis
+// restarted, a Delay's resume job gone) are re-queued now and every few minutes after.
+// Job ids are deterministic, so runs that still have their job are not queued twice.
+const recoveryScheduler = startRecoveryScheduler({
+  prisma,
+  queue: zapExecutionQueue,
+  redis: connection,
+  intervalMs: Number(process.env.RECOVERY_SWEEP_MS) >= 1000 ? Number(process.env.RECOVERY_SWEEP_MS) : undefined,
+});
 
 // Automatically start background polling engine alongside the worker
 startPollingScheduler();
@@ -470,8 +496,9 @@ async function handleShutdown(signal) {
 
   let hasError = false;
 
-  // 1. Stop background polling scheduler
+  // 1. Stop background polling scheduler and recovery sweeps
   try {
+    await recoveryScheduler.stop();
     stopPollingScheduler();
   } catch (err) {
     hasError = true;

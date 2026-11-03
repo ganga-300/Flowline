@@ -7,6 +7,8 @@
  * That lets callers (pollers, webhooks, the startup sweep) simply re-queue on any doubt.
  */
 const jobIdFor = (runId) => `zap-run-${runId}`;
+// The delayed job that continues a run after its Delay step (one per run and Delay step).
+const resumeJobIdFor = (runId, delayStepId) => `zap-run-${runId}-after-${delayStepId}`;
 
 async function queueRun(queue, run) {
   await queue.add("execute-zap-run", { zapRunId: run.id }, { jobId: jobIdFor(run.id) });
@@ -40,4 +42,4 @@ async function requeueQueuedRuns(prisma, queue) {
   return waiting.length;
 }
 
-module.exports = { jobIdFor, queueRun, createAndQueueRun, requeueQueuedRuns };
+module.exports = { jobIdFor, resumeJobIdFor, queueRun, createAndQueueRun, requeueQueuedRuns };

@@ -21,7 +21,7 @@ stubModule("bullmq", {
   Worker: class { constructor(name, fn) { processJob = fn; } on() {} async close() {} },
   Queue: class { async add() {} async close() {} },
 });
-stubModule("ioredis", class { async quit() {} });
+stubModule("ioredis", class { async quit() {} async set() { return "OK"; } async get() { return null; } async del() {} });
 stubModule(path.join(workerSrc, "pollingCron"), {
   startPollingScheduler: () => {},
   stopPollingScheduler: () => {},
