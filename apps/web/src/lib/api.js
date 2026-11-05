@@ -18,8 +18,16 @@ export async function authFetch(urlOrPath, options = {}) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  return fetch(url, {
+  const res = await fetch(url, {
     ...options,
     headers,
   });
+
+  // The login token expired or is no longer valid: sign out and go to the login page,
+  // instead of every page showing errors.
+  if (res.status === 401 && token && typeof window !== "undefined") {
+    localStorage.removeItem("flowline_token");
+    window.location.assign("/login");
+  }
+  return res;
 }

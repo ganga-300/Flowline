@@ -33,6 +33,13 @@ test("send message: posts templated text to the selected channel id", async () =
   assert.deepEqual(out.output, { status: "SENT", messageId: "1.1", channel: "C1" });
 });
 
+test("send message: a webhook URL that isn't Slack's is refused before any request (SSRF)", async () => {
+  for (const webhookUrl of ["http://169.254.169.254/latest/meta-data", "https://hooks.slack.com.evil.com/x", "http://hooks.slack.com/services/x", "not a url"]) {
+    await assert.rejects(sendMessage(step("send_message", { webhookUrl, text: "hi" }), ctx), /must be a Slack incoming webhook/, webhookUrl);
+  }
+  assert.equal(calls.length, 0);
+});
+
 test("send message: no channel selected is an error (no silent #general)", async () => {
   await assert.rejects(sendMessage(step("send_message", { text: "hi" }), ctx), /channel/i);
   assert.equal(calls.length, 0);

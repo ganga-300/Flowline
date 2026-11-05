@@ -7,6 +7,22 @@ const { slackApiError } = require("./errors");
 // Slack rate limiter: 5 messages burst capacity, 1 msg/sec refill rate
 const slackBucket = new TokenBucket(5, 1);
 
+// Slack incoming webhooks are only ever served from these hosts. Anything else would let a
+// step POST to an arbitrary address, including private/internal ones (SSRF).
+const SLACK_WEBHOOK_HOSTS = new Set(["hooks.slack.com", "hooks.slack-gov.com"]);
+
+function assertSlackWebhookUrl(url) {
+  let parsed = null;
+  try {
+    parsed = new URL(url);
+  } catch {
+    // reported below
+  }
+  if (!parsed || parsed.protocol !== "https:" || !SLACK_WEBHOOK_HOSTS.has(parsed.hostname)) {
+    throw new Error("Slack webhook URL must be a Slack incoming webhook (https://hooks.slack.com/...).");
+  }
+}
+
 /**
  * Slack -> Send Message Executor
  * Supports both connected OAuth accounts and custom Webhook URLs.
@@ -38,6 +54,7 @@ async function executeSlackSendMessage(step, context) {
 
   // 1. Direct Webhook execution if specified
   if (webhookUrl) {
+    assertSlackWebhookUrl(webhookUrl);
     const res = await fetchWithTimeout(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -71,6 +71,8 @@ model Connection {
   steps         Step[]
   userId String
   user   User   @relation(fields: [userId], references: [id])
+
+  @@index([userId])
 }
 
 
@@ -187,7 +189,10 @@ model ZapRun {
 
   stepExecutions      StepExecution[]
 
-  @@index([zapId])
+  // [zapId, createdAt]: the runs list (newest first per Zap); also serves lookups by zapId.
+  // [status]: the recovery sweep and worker start-up look up QUEUED/RUNNING runs.
+  @@index([zapId, createdAt])
+  @@index([status])
 }
 
 
@@ -246,6 +251,6 @@ model Alert {
   errorTrace  String?
   createdAt   DateTime @default(now())
 
-  @@index([userId])
+  @@index([userId, createdAt])
   @@index([zapId])
 }

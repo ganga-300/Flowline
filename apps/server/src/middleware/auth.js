@@ -1,4 +1,4 @@
-const jwt = require("jsonwebtoken");
+const { verifySessionToken } = require("../lib/authTokens");
 
 function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -10,7 +10,7 @@ function requireAuth(req, res, next) {
   const token = authHeader.split(" ")[1];
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = verifySessionToken(token);
     req.userId = decoded.userId;
     next(); // sab theek hai, aage badho
   } catch (err) {

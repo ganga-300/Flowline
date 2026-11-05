@@ -127,3 +127,14 @@ test("missing name or trigger type is a 400", async () => {
   assert.equal((await put("alice", "z1", { trigger: githubTrigger(), steps: [] })).status, 400);
   assert.equal((await put("alice", "z1", { name: "x", trigger: {}, steps: [] })).status, 400);
 });
+
+test("a step nested under a Branch or Loop can't be turned into a Delay (the worker can't pause there)", async () => {
+  db.step.push({ id: "s3", zapId: "z1", type: "ACTION", name: "Nested", order: 0, connectionId: null, parentStepId: "s2", config: {} });
+  const out = await put("alice", "z1", { name: "x", trigger: githubTrigger(), steps: [slackStep(), { id: "s3", type: "DELAY", order: 1, config: { seconds: 60 } }] });
+  assert.equal(out.status, 400);
+  assert.match(out.body.error, /Delay step can't be inside a Branch or Loop/);
+  assert.equal(db.step.find((s) => s.id === "s3").type, "ACTION");
+  // A top-level Delay is fine.
+  const ok = await put("alice", "z1", { name: "x", trigger: githubTrigger(), steps: [slackStep(), { type: "DELAY", order: 1, config: { seconds: 60 } }] });
+  assert.equal(ok.status, 200);
+});

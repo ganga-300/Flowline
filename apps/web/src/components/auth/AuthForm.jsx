@@ -95,6 +95,7 @@ export function AuthForm({ mode }) {
               id="password"
               type={showPassword ? "text" : "password"}
               required
+              minLength={mode === "signup" ? 8 : undefined}
               autoComplete={mode === "signup" ? "new-password" : "current-password"}
               placeholder="••••••••"
               value={password}

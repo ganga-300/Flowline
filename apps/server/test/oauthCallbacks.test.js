@@ -55,7 +55,7 @@ async function callCallback(provider, query) {
 }
 
 function stateFor(provider, returnUrl = "/zaps/new") {
-  return jwt.sign({ userId: "user_1", provider, returnUrl }, process.env.JWT_SECRET);
+  return jwt.sign({ userId: "user_1", provider, returnUrl, typ: "oauth_state" }, process.env.JWT_SECRET);
 }
 
 beforeEach(() => { created.length = 0; });

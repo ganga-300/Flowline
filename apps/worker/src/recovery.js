@@ -45,9 +45,19 @@ async function runWithRetry(fn, { attempts = 3, baseDelayMs = 500, sleep, onAtte
 }
 
 /**
+ * Identifies one execution of a step within a run. Steps inside a Loop run once per item,
+ * so they are told apart by their position in the loop(s) (`input.loopPath`, outermost loop
+ * first); every other step runs at most once and is identified by its id alone.
+ */
+function executionKey(stepId, loopPath) {
+  return Array.isArray(loopPath) && loopPath.length ? `${stepId}#${loopPath.join(".")}` : stepId;
+}
+
+/**
  * Decides how to continue a run whose job is being processed again (e.g. BullMQ re-ran it
  * after the worker crashed).
- *  - completedStepIds: steps that already succeeded - skip them, reuse their outputs.
+ *  - completedStepIds: executionKey()s of steps that already succeeded - skip them, reuse
+ *    their outputs (completedOutputs: executionKey -> output).
  *    DELAY is excluded so a crash before the resume job was queued doesn't lose the wait;
  *    BRANCH/LOOP are excluded so they are re-evaluated and reach their child steps
  *    (children that already succeeded are still skipped individually).
@@ -63,8 +73,10 @@ function planRecovery(steps, executions) {
   const completedExecutions = executions.filter(
     (e) => e.status === "SUCCESS" && (!reEvaluated.has(typeById.get(e.stepId)) || (e.reusedFromRunId && typeById.get(e.stepId) === "DELAY"))
   );
+  const keyOf = (e) => executionKey(e.stepId, e.input?.loopPath);
   return {
-    completedStepIds: new Set(completedExecutions.map((e) => e.stepId)),
+    completedStepIds: new Set(completedExecutions.map(keyOf)),
+    completedOutputs: new Map(completedExecutions.map((e) => [keyOf(e), e.output])),
     completedExecutions,
     interrupted: executions.filter((e) => e.status === "RUNNING"),
     superseded: executions.filter((e) => e.status === "RETRYING"),
@@ -85,8 +97,10 @@ function planRetryCarryOver(steps, originalExecutions, originalRunId) {
   const rows = [];
   for (const e of originalExecutions) {
     const type = typeById.get(e.stepId);
-    if (e.status !== "SUCCESS" || !type || type === "BRANCH" || type === "LOOP" || seen.has(e.stepId)) continue;
-    seen.add(e.stepId);
+    // One row per execution: a step inside a Loop is carried over once per iteration.
+    const key = executionKey(e.stepId, e.input?.loopPath);
+    if (e.status !== "SUCCESS" || !type || type === "BRANCH" || type === "LOOP" || seen.has(key)) continue;
+    seen.add(key);
     rows.push({
       stepId: e.stepId,
       status: "SUCCESS",
@@ -99,4 +113,4 @@ function planRetryCarryOver(steps, originalExecutions, originalRunId) {
   return rows;
 }
 
-module.exports = { isRetryable, retryableError, runWithRetry, planRecovery, planRetryCarryOver, RETRYABLE_STATUSES };
+module.exports = { isRetryable, retryableError, runWithRetry, executionKey, planRecovery, planRetryCarryOver, RETRYABLE_STATUSES };

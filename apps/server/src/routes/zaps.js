@@ -6,6 +6,7 @@ const requireAuth = require("../middleware/auth");
 const { zapExecutionQueue } = require("../Queue");
 const { queueRun } = require("../../../worker/src/runQueue");
 const { validateTrigger } = require("../lib/triggerValidation");
+const { nestedDelayError } = require("../lib/stepValidation");
 
 // Every account referenced by the trigger or a step must belong to this user;
 // otherwise a Zap could act through someone else's Gmail/Slack/GitHub.
@@ -67,7 +68,7 @@ router.post("/",requireAuth, async (req, res) => {
   if (!name || !trigger || !trigger.type) {
     return res.status(400).json({ error: "Name and trigger.type are required" });
   }
-  const triggerError = validateTrigger(trigger);
+  const triggerError = validateTrigger(trigger) || nestedDelayError(steps);
   if (triggerError) {
     return res.status(400).json({ error: triggerError });
   }
@@ -149,6 +150,10 @@ router.put("/:id", requireAuth, async (req, res) => {
     const existingStepIds = new Set(existing.steps.map((st) => st.id));
     if (steps.some((st) => st.id && !existingStepIds.has(st.id))) {
       return res.status(400).json({ error: "A step in this request doesn't belong to this Zap." });
+    }
+    const delayError = nestedDelayError(steps, existing.steps);
+    if (delayError) {
+      return res.status(400).json({ error: delayError });
     }
 
     const connectionId = trigger.connectionId || trigger.config?.connectionId || null;
@@ -299,7 +304,8 @@ router.get("/:id/runs",requireAuth, async (req, res) => {
     res.json({ runs });
   } catch (err) {
     console.error("Error fetching zap runs:", err);
-    res.json({ runs: [] });
+    // Not an empty list: that would show "No runs yet" instead of the page's retry banner.
+    res.status(500).json({ error: "Failed to load runs" });
   }
 });
 

@@ -280,12 +280,14 @@ router.post("/fetch-sample", requireAuth, async (req, res) => {
             headers: { Authorization: `Bearer ${accessToken}` },
           });
         } catch (rfErr) {
-          return res.status(401).json({ error: "Gmail token expired. Please reconnect your account." });
+          // Not 401: the frontend treats 401 as "your Flowline login expired" and signs out.
+          return res.status(400).json({ error: "Gmail token expired. Please reconnect your account." });
         }
       }
 
       if (!resGmail.ok) {
-        return res.status(resGmail.status).json({ error: `Gmail API error (${resGmail.status}): Failed to fetch messages.` });
+        const status = resGmail.status === 401 ? 400 : resGmail.status;
+        return res.status(status).json({ error: `Gmail API error (${resGmail.status}): Failed to fetch messages.` });
       }
 
       let listData = await resGmail.json();

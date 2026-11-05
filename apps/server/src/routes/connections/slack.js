@@ -1,6 +1,6 @@
 const express = require("express");
 const { fetchWithTimeout } = require("../../../../worker/src/fetchWithTimeout");
-const jwt = require("jsonwebtoken");
+const { signOAuthState, verifyOAuthState, safeReturnUrl } = require("../../lib/authTokens");
 const router = express.Router();
 const prisma = require("../../prismaClient");
 const requireAuth = require("../../middleware/auth");
@@ -28,13 +28,7 @@ router.get("/start", authMiddleware, (req, res) => {
     });
   }
 
-  const returnUrl = req.query.returnUrl || "/connections";
-
-  const stateToken = jwt.sign(
-    { userId, provider: "slack", returnUrl, nonce: Math.random().toString(36).substring(2) },
-    process.env.JWT_SECRET,
-    { expiresIn: "15m" }
-  );
+  const stateToken = signOAuthState({ userId, provider: "slack", returnUrl: req.query.returnUrl });
 
   const scopes = [
     "chat:write",
@@ -74,14 +68,14 @@ router.get("/callback", async (req, res) => {
   let decodedState = {};
   try {
     if (state) {
-      decodedState = jwt.verify(state, process.env.JWT_SECRET);
+      decodedState = verifyOAuthState(state, "slack");
       req.userId = decodedState.userId;
     }
   } catch {
     // continue
   }
 
-  const returnUrl = decodedState.returnUrl || "/connections";
+  const returnUrl = safeReturnUrl(decodedState.returnUrl);
   const redirectSep = returnUrl.includes("?") ? "&" : "?";
 
   if (slackError) {

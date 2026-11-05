@@ -14,7 +14,7 @@ const { executeFormatterStep } = require("./formatter");
 const TokenBucket = require("./rateLimiter");
 const { getIntegrationHandler } = require("./integrations/registry");
 const { recordStepOutput, restoreStepOutputs } = require("./stepContext");
-const { runWithRetry, retryableError, planRecovery, planRetryCarryOver } = require("./recovery");
+const { runWithRetry, retryableError, executionKey, planRecovery, planRetryCarryOver } = require("./recovery");
 const { resumeJobIdFor, JOB_RETENTION } = require("./runQueue");
 const { startRecoveryScheduler } = require("./runRecovery");
 const { aiPromptTemplate } = require("./aiStep");
@@ -129,21 +129,32 @@ async function executeWithRetry(step, stepExecutionId, context) {
 // Recursively marks a whole unselected branch subtree as SKIPPED - not
 // FAILED. This is the distinction from FR-05: a branch not taken is
 // expected behavior, not an error.
-async function markSkipped(step, allSteps, zapRunId) {
+async function markSkipped(step, allSteps, zapRunId, context) {
   await prisma.stepExecution.create({
-    data: { zapRunId, stepId: step.id, status: "SKIPPED" },
+    data: { zapRunId, stepId: step.id, status: "SKIPPED", input: loopInput(context) },
   });
   const children = allSteps.filter((s) => s.parentStepId === step.id);
   for (const child of children) {
-    await markSkipped(child, allSteps, zapRunId);
+    await markSkipped(child, allSteps, zapRunId, context);
   }
+}
+
+function childStepsOf(step, allSteps) {
+  return allSteps.filter((s) => s.parentStepId === step.id).sort((a, b) => a.order - b.order);
+}
+
+// Inside a Loop, each execution records which iteration it belongs to, so crash recovery
+// and "Retry from failed step" can tell iterations apart (see executionKey in recovery.js).
+function loopInput(context) {
+  return context.loopPath ? { loopPath: context.loopPath } : undefined;
 }
 
 // Executes an ordered list of sibling steps against the shared context.
 // Returns { filtered: true } if a filter stopped the run, or { done: true }
 // when the whole list completed normally.
+// completed: steps that already succeeded in this run (executionKey -> output), e.g. before a crash.
 // delayStartedAt: Delay steps this run already started (step id -> Date), e.g. before a crash.
-async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterStepId, completedStepIds = new Set(), delayStartedAt = new Map()) {
+async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterStepId, completed = new Map(), delayStartedAt = new Map()) {
   let resuming = !!resumeAfterStepId; // true agar resume ho raha hai, warna false
   for (const step of steps) {
     if (resuming) {
@@ -153,10 +164,26 @@ async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterS
       continue; // is step ko skip karo (already ho chuka hai pehle)
     }
     // Already succeeded before a worker crash: don't run it (or send it) again.
-    if (completedStepIds.has(step.id)) {
+    const key = executionKey(step.id, context.loopPath);
+    if (completed.has(key)) {
+      const output = completed.get(key);
+      // Later steps in this loop iteration must see this iteration's output, not another's.
+      if (context.loopPath) recordStepOutput(context, step, output);
+      // A filter that stopped the run still stops it.
+      if (step.type === "FILTER" && output?.passed === false) return { filtered: true };
+      // Steps nested under it (e.g. the rest of a branch path) may not have run yet.
+      if (step.type !== "FILTER" && step.type !== "DELAY") {
+        const result = await executeStepList(childStepsOf(step, allSteps), allSteps, context, zapRunId, undefined, completed);
+        if (result.filtered) return result;
+      }
       continue;
     }
     if (step.type === "DELAY") {
+      // Nested lists don't pass a pause up to the job, so the run would carry on without
+      // waiting. The API rejects this; fail clearly if an older Zap has one.
+      if (step.parentStepId) {
+        throw new Error("A Delay step inside a Branch or Loop isn't supported. Move the Delay to the main list of steps.");
+      }
       const seconds = step.config.seconds || 60;
       // Already started before a crash (the job is being re-run): keep that start time, so
       // the wait isn't restarted and the run trace doesn't show the Delay twice.
@@ -169,6 +196,7 @@ async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterS
         data: {
           zapRunId,
           stepId: step.id,
+          input: loopInput(context),
           status: "SUCCESS",
           output: { delayedSeconds: seconds },
         },
@@ -181,6 +209,7 @@ async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterS
         data: {
           zapRunId,
           stepId: step.id,
+          input: loopInput(context),
           status: "SUCCESS",
           output: { passed },
         },
@@ -212,7 +241,7 @@ async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterS
 
       for (const child of children) {
         if (!selected || child.id !== selected.id) {
-          await markSkipped(child, allSteps, zapRunId);
+          await markSkipped(child, allSteps, zapRunId, context);
         }
       }
 
@@ -220,6 +249,7 @@ async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterS
         data: {
           zapRunId,
           stepId: step.id,
+          input: loopInput(context),
           status: "SUCCESS",
           output: { selectedStepId: selected ? selected.id : null },
         },
@@ -228,7 +258,7 @@ async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterS
       if (!selected) return { done: true }; // no branch matched, nothing further to run
 
       // Continue into the selected child (and its own children, if any)
-      const result = await executeStepList([selected], allSteps, context, zapRunId, undefined, completedStepIds);
+      const result = await executeStepList([selected], allSteps, context, zapRunId, undefined, completed);
       if (result.filtered) return result;
       continue;
     }
@@ -251,10 +281,11 @@ async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterS
           ...context,
           loopItem: item,
           loopIndex: i,
+          loopPath: [...(context.loopPath || []), i],
         };
 
         if (children.length > 0) {
-          await executeStepList(children, allSteps, loopContext, zapRunId, undefined, completedStepIds);
+          await executeStepList(children, allSteps, loopContext, zapRunId, undefined, completed);
         }
         loopResults.push({ index: i, item });
       }
@@ -263,6 +294,7 @@ async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterS
         data: {
           zapRunId,
           stepId: step.id,
+          input: loopInput(context),
           status: "SUCCESS",
           output: { iteratedCount: items.length, items: loopResults },
         },
@@ -273,7 +305,7 @@ async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterS
 
     // ACTION step (AI/transform would slot in here later the same way)
     const stepExecution = await prisma.stepExecution.create({
-      data: { zapRunId, stepId: step.id, status: "RUNNING" },
+      data: { zapRunId, stepId: step.id, status: "RUNNING", input: loopInput(context) },
     });
 
     try {
@@ -294,11 +326,9 @@ async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterS
 
     // A step can itself have children (e.g. steps nested under a branch
     // child) - continue into them after this step completes.
-    const nextChildren = allSteps
-      .filter((s) => s.parentStepId === step.id)
-      .sort((a, b) => a.order - b.order);
+    const nextChildren = childStepsOf(step, allSteps);
     if (nextChildren.length) {
-      const result = await executeStepList(nextChildren, allSteps, context, zapRunId, undefined, completedStepIds);
+      const result = await executeStepList(nextChildren, allSteps, context, zapRunId, undefined, completed);
       if (result.filtered) return result;
     }
   }
@@ -390,7 +420,7 @@ const worker = new Worker(
         const isDelay = allSteps.find((s) => s.id === e.stepId)?.type === "DELAY";
         if (isDelay && e.status === "SUCCESS" && !e.reusedFromRunId && !delayStartedAt.has(e.stepId)) delayStartedAt.set(e.stepId, e.createdAt);
       }
-      const result = await executeStepList(topLevel, allSteps, context, zapRunId, resumeAfterStepId, recovery.completedStepIds, delayStartedAt);
+      const result = await executeStepList(topLevel, allSteps, context, zapRunId, resumeAfterStepId, recovery.completedOutputs, delayStartedAt);
 
       if (result.paused) {
         await zapExecutionQueue.add(

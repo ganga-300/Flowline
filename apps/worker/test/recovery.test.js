@@ -91,6 +91,20 @@ test("a retry of a retry points at the run where the step really ran", () => {
   assert.equal(rows[0].reusedFromRunId, "r0");
 });
 
+test("steps inside a Loop are reused and skipped per iteration, not once for the whole loop", () => {
+  const original = [
+    { stepId: "a1", status: "SUCCESS", input: { loopPath: [0] }, output: { n: 0 } },
+    { stepId: "a1", status: "SUCCESS", input: { loopPath: [1] }, output: { n: 1 } },
+    { stepId: "a1", status: "FAILED", input: { loopPath: [2] }, error: "channel_not_found" },
+  ];
+  const rows = planRetryCarryOver(zapSteps, original, "r1");
+  assert.deepEqual(rows.map((r) => r.input.loopPath), [[0], [1]], "each finished iteration is carried over");
+
+  const plan = planRecovery(zapSteps, original.map((e, i) => ({ id: `e${i}`, ...e })));
+  assert.deepEqual([...plan.completedStepIds].sort(), ["a1#0", "a1#1"]);
+  assert.deepEqual(plan.completedOutputs.get("a1#1"), { n: 1 });
+});
+
 test("after a crash, a reused DELAY counts as done (no second wait); a normal DELAY is re-evaluated", () => {
   const reused = planRecovery(zapSteps, [{ id: "e1", stepId: "d", status: "SUCCESS", reusedFromRunId: "r1" }]);
   assert.equal(reused.completedStepIds.has("d"), true);
