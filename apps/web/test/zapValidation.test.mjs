@@ -26,9 +26,9 @@ test("GitHub trigger without a repo and Slack trigger without a channel are reje
 });
 
 test("action steps need an app, an action and an account", () => {
-  assert.match(validateZapForPublish({ trigger: ghTrigger(), steps: [{ type: "ACTION", config: {} }] }), /Step 1 is incomplete/);
-  assert.match(validateZapForPublish({ trigger: ghTrigger(), steps: [slackStep({ action: "" })] }), /Step 1: please choose a Slack action/);
-  assert.match(validateZapForPublish({ trigger: ghTrigger(), steps: [slackStep(), slackStep({ connectionId: null })] }), /Step 2: please choose a Slack account/);
+  assert.match(validateZapForPublish({ trigger: ghTrigger(), steps: [{ type: "ACTION", config: {} }] }), /Step 2 is incomplete/);
+  assert.match(validateZapForPublish({ trigger: ghTrigger(), steps: [slackStep({ action: "" })] }), /Step 2: please choose a Slack action/);
+  assert.match(validateZapForPublish({ trigger: ghTrigger(), steps: [slackStep(), slackStep({ connectionId: null })] }), /Step 3: please choose a Slack account/);
 });
 
 test("webhook trigger and custom HTTP step need no account", () => {

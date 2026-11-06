@@ -3,6 +3,8 @@
 //   fromSavedZap  - zap from GET /zaps/:id -> builder state (for editing)
 // Builder step ids ("step-1", ...) are saved as config.ref because later steps reference
 // them in {{steps.<ref>.output.*}}; steps loaded for editing keep their database id as dbId.
+// Steps are a tree (Paths, Loop); see stepTree.js for how it maps to the API's flat list.
+import { fromSavedSteps, toPayloadSteps } from "./stepTree.js";
 
 function stepConfigForApi(s) {
   const config = s.config || {};
@@ -25,6 +27,8 @@ function stepConfigForApi(s) {
     return { condition: { path: config.path || "", operator: config.operator || "EQUALS", value: config.value || "" } };
   }
   if (s.type === "DELAY") return { seconds: Number(config.seconds) || 0 };
+  if (s.type === "LOOP") return { arrayPath: (config.arrayPath || "").trim() };
+  if (s.type === "BRANCH") return {};
   // Step types the builder can't edit (e.g. created via the API) are passed through as-is.
   const { ref, ...rest } = config;
   return rest;
@@ -41,11 +45,14 @@ export function toZapPayload({ zapName, trigger, steps }) {
       ...(trigger.type === "POLLING" && { pollIntervalSec: Number(trigger.pollIntervalSec) || 300 }),
       ...(triggerConnectionId && { connectionId: triggerConnectionId }),
     },
-    steps: steps.map((s, idx) => ({
+    // Nested steps (Paths, Loop) name their parent's ref; a path's first step carries its rule.
+    steps: toPayloadSteps(steps).map(({ step: s, parentRef, branchCondition, order }) => ({
       ...(s.dbId && { id: s.dbId }),
       type: s.type,
       name: s.name || `${s.type} Step`,
-      order: idx,
+      order,
+      ...(parentRef && { parentRef }),
+      ...(branchCondition !== undefined && { branchCondition }),
       ...(s.config?.connectionId && { connectionId: s.config.connectionId }),
       config: { ...stepConfigForApi(s), ref: s.id },
     })),
@@ -70,22 +77,20 @@ function stepConfigForBuilder(step) {
   }
   if (step.type === "AI") return { prompt: config.prompt || config.promptTemplate || "" };
   if (step.type === "DELAY") return { seconds: config.seconds ?? 30 };
+  if (step.type === "LOOP") return { arrayPath: config.arrayPath || "" };
   return config;
 }
 
 export function fromSavedZap(zap) {
   const t = zap.trigger || { type: "WEBHOOK", config: { provider: "webhook", event: "catch_hook" } };
-  const steps = (zap.steps || [])
-    .filter((s) => !s.parentStepId)
-    .sort((a, b) => a.order - b.order)
-    .map((s) => ({
-      id: s.config?.ref || s.id,
-      dbId: s.id,
-      type: s.type,
-      name: s.name,
-      config: stepConfigForBuilder(s),
-      isConfigured: true,
-    }));
+  const steps = fromSavedSteps(zap.steps || [], (s) => ({
+    id: s.config?.ref || s.id,
+    dbId: s.id,
+    type: s.type,
+    name: s.name,
+    config: stepConfigForBuilder(s),
+    isConfigured: true,
+  }));
   return {
     zapName: zap.zapName || "Untitled Zap",
     trigger: {

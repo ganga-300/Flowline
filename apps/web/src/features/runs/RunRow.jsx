@@ -61,41 +61,61 @@ export function RunRow({ run, zapId, expanded, detail, loadingDetail, detailErro
       </div>
 
       {expanded && (
-        <div id={panelId} className="space-y-5 border-t border-line bg-canvas px-4 py-5 sm:px-5">
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
-            <Detail label="Started">{formatFullTime(run.startedAt || run.createdAt)}</Detail>
-            <Detail label="Duration">{formatDuration(run.startedAt, run.completedAt)}</Detail>
-            <Detail label="Status">{meta.label}</Detail>
-            <Detail label="Run ID"><span className="break-all font-mono text-xs">{run.id}</span></Detail>
-          </dl>
-
-          {run.retryOfRunId && (
-            <p className="text-sm text-ink-muted">
-              Retry of{" "}
-              <Link href={`/zaps/${zapId}/runs?run=${run.retryOfRunId}`} className="font-medium text-ink underline underline-offset-2">this failed run</Link>
-              , starting from the step that failed.
-            </p>
-          )}
-
-          <JsonViewer label="Trigger data" data={run.triggerPayload} />
-
-          <div>
-            <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-faint">Steps</h4>
-            {loadingDetail ? (
-              <div className="flex items-center gap-2 py-2 text-sm text-ink-muted"><Spinner className="size-4" /> Loading steps…</div>
-            ) : detailError ? (
-              <p className="text-sm text-danger">{detailError}</p>
-            ) : (
-              <StepTrace executions={detail?.stepExecutions} zapId={zapId} />
-            )}
-          </div>
-        </div>
+        <RunDetails
+          id={panelId}
+          run={run}
+          zapId={zapId}
+          detail={detail}
+          loadingDetail={loadingDetail}
+          detailError={detailError}
+        />
       )}
     </div>
   );
 }
 
-function Detail({ label, children }) {
+/**
+ * The expanded part of a run: timing, trigger data and the step trace.
+ * Trigger data comes from the run, or from its loaded detail when the list omits it.
+ * extra: optional rows for the details grid (e.g. the Zap on the history page).
+ */
+export function RunDetails({ id, run, zapId, detail, loadingDetail, detailError, extra }) {
+  const meta = runStatusMeta(detail || run);
+  return (
+    <div id={id} className="space-y-5 border-t border-line bg-canvas px-4 py-5 sm:px-5">
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
+        {extra}
+        <Detail label="Started">{formatFullTime(run.startedAt || run.createdAt)}</Detail>
+        <Detail label="Duration">{formatDuration(run.startedAt, run.completedAt)}</Detail>
+        <Detail label="Status">{meta.label}</Detail>
+        <Detail label="Run ID"><span className="break-all font-mono text-xs">{run.id}</span></Detail>
+      </dl>
+
+      {run.retryOfRunId && (
+        <p className="text-sm text-ink-muted">
+          Retry of{" "}
+          <Link href={`/zaps/${zapId}/runs?run=${run.retryOfRunId}`} className="font-medium text-ink underline underline-offset-2">this failed run</Link>
+          , starting from the step that failed.
+        </p>
+      )}
+
+      <JsonViewer label="Trigger data" data={run.triggerPayload ?? detail?.triggerPayload} />
+
+      <div>
+        <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-faint">Steps</h4>
+        {loadingDetail ? (
+          <div className="flex items-center gap-2 py-2 text-sm text-ink-muted"><Spinner className="size-4" /> Loading steps…</div>
+        ) : detailError ? (
+          <p className="text-sm text-danger">{detailError}</p>
+        ) : (
+          <StepTrace executions={detail?.stepExecutions} zapId={zapId} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function Detail({ label, children }) {
   return (
     <div className="min-w-0">
       <dt className="text-xs text-ink-faint">{label}</dt>

@@ -4,7 +4,7 @@ import { Globe } from "lucide-react";
 import { Field, Select } from "@/components/ui";
 import { AppIcon } from "@/components/icons/AppIcon";
 import { cn } from "@/lib/cn";
-import { integrationsList, getIntegration } from "./index";
+import { actionAppsList, getIntegration, needsAccount } from "./index";
 import { ActionFormRenderer } from "./ActionFormRenderer";
 import { ConnectionSelector } from "./ConnectionSelector";
 
@@ -28,11 +28,12 @@ export function ActionIntegrationSelector({ config, sampleData = {}, steps = [],
     }
   };
 
-  const apps = [...integrationsList.map((i) => ({ id: i.id, name: i.name })), { id: "custom_http", name: "HTTP request" }];
+  // Built-in apps are listed by their short name ("Formatter by Flowline" -> "Formatter").
+  const apps = [...actionAppsList.map((i) => ({ id: i.id, name: i.name.replace(/ by Flowline$/, "") })), { id: "custom_http", name: "HTTP request" }];
 
   return (
     <div className="space-y-5">
-      <div className="space-y-1.5">
+      <div id="stage-app" className="scroll-mt-4 space-y-1.5">
         <p className="text-sm font-medium text-ink">App</p>
         <div className="grid grid-cols-2 gap-2">
           {apps.map((app) => {
@@ -74,12 +75,17 @@ export function ActionIntegrationSelector({ config, sampleData = {}, steps = [],
 
           {selectedAction && (
             <>
+              {needsAccount(selectedProvider) && (
+              <div id="stage-account" className="scroll-mt-4">
               <ConnectionSelector
                 providerId={selectedProvider}
                 providerName={currentIntegration?.name || "App"}
                 connectionId={connectionId}
                 onChange={(newConnId) => onChange({ provider: selectedProvider, action: selectedAction, connectionId: newConnId, config: actionValues })}
               />
+              </div>
+              )}
+              <div id="stage-configure" className="scroll-mt-4">
               <ActionFormRenderer
                 providerId={selectedProvider}
                 actionId={selectedAction}
@@ -89,6 +95,7 @@ export function ActionIntegrationSelector({ config, sampleData = {}, steps = [],
                 steps={steps}
                 onChange={(newFieldValues) => onChange({ provider: selectedProvider, action: selectedAction, connectionId, config: newFieldValues })}
               />
+              </div>
             </>
           )}
         </>

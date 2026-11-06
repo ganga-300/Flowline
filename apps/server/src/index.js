@@ -16,6 +16,7 @@ const connectionsRouter = require("./routes/connections");
 const testStepRouter = require("./routes/testStep");
 const alertsRouter = require("./routes/alerts");
 const optionsRouter = require("./routes/options");
+const runsRouter = require("./routes/runs");
 
 const app = express();
 
@@ -32,6 +33,7 @@ app.use("/zaps", zapsRouter);
 app.use("/connections", optionsRouter);
 app.use("/connections", connectionsRouter);
 app.use("/alerts", alertsRouter);
+app.use("/runs", runsRouter);
 
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 

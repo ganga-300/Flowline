@@ -90,7 +90,11 @@ const prisma = {
   },
   trigger: { update: forbidden, create: forbidden },
   step: { deleteMany: forbidden, update: forbidden, create: forbidden },
-  $transaction: forbidden,
+  // Valid Zaps are created in a transaction: the Zap, then its steps.
+  $transaction: async (fn) => fn({
+    zap: { create: (args) => prisma.zap.create(args), findFirst: async () => ({ id: "z_new" }) },
+    step: { create: async ({ data }) => ({ id: "s_new", ...data }) },
+  }),
 };
 stub(path.join(__dirname, "../src/prismaClient.js"), prisma);
 stub(path.join(__dirname, "../src/Queue.js"), { zapExecutionQueue: { add: async () => {} } });

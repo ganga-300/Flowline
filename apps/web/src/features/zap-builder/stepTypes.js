@@ -5,10 +5,12 @@ import { triggerProviders } from "../../integrations/triggers.js";
 
 /** Kinds offered in the "add a step" menu, in display order. */
 export const STEP_KINDS = [
-  { type: "ACTION", label: "App action", description: "Do something in GitHub, Slack or Gmail" },
+  { type: "ACTION", label: "App action", description: "Do something in GitHub, Slack or Gmail, or format and calculate data" },
   { type: "FILTER", label: "Filter", description: "Only continue when a condition is true" },
   { type: "DELAY", label: "Delay", description: "Wait before the next step" },
   { type: "AI", label: "AI prompt", description: "Send a prompt built from earlier data" },
+  { type: "BRANCH", label: "Paths", description: "Do different things depending on the data" },
+  { type: "LOOP", label: "Loop", description: "Run steps once for each item in a list" },
 ];
 
 export const FILTER_OPERATORS = [
@@ -25,11 +27,22 @@ const DEFAULTS = {
   AI: { name: "AI prompt", config: { prompt: "" } },
   FILTER: { name: "Filter", config: { path: "", operator: "EQUALS", value: "" } },
   DELAY: { name: "Delay", config: { seconds: 30 } },
+  BRANCH: { name: "Paths", config: {} },
+  LOOP: { name: "Loop", config: { arrayPath: "" } },
 };
 
 export function createStep(type, id) {
   const d = DEFAULTS[type] || { name: "Step", config: {} };
-  return { id, type, name: d.name, config: { ...d.config }, isConfigured: false };
+  const step = { id, type, name: d.name, config: { ...d.config }, isConfigured: false };
+  // Paths start with "Path A" (has a rule) and the fallback path; a Loop starts empty.
+  if (type === "BRANCH") {
+    step.paths = [
+      { id: `${id}-a`, name: "Path A", condition: { path: "", operator: "EQUALS", value: "" }, steps: [] },
+      { id: `${id}-else`, name: "Otherwise", condition: null, steps: [] },
+    ];
+  }
+  if (type === "LOOP") step.steps = [];
+  return step;
 }
 
 /** Small label above a card title: "Trigger", "Action", "Filter"... */
@@ -98,7 +111,33 @@ export function describeStepCard(step, registry = {}) {
       summary: config.prompt ? `"${truncate(config.prompt, 50)}"` : "Write the prompt",
     };
   }
+  if (step?.type === "BRANCH") {
+    const paths = step.paths || [];
+    const unset = paths.some((p) => p.condition && !p.condition.path);
+    return {
+      app: null,
+      title: step.name || "Paths",
+      summary: paths.some((p) => p.condition)
+        ? `Split into ${paths.length} path${paths.length === 1 ? "" : "s"}${unset ? " · rules need setup" : ""}`
+        : "Add a path with a rule",
+    };
+  }
+  if (step?.type === "LOOP") {
+    return {
+      app: null,
+      title: step.name || "Loop",
+      summary: config.arrayPath ? `For each item in ${config.arrayPath}` : "Choose the list to loop over",
+    };
+  }
   return { app: null, title: step?.name || "Step", summary: "Configured outside the builder" };
+}
+
+/** A path's rule as a sentence: "If trigger.vip equals "yes"" (null rule = the fallback path). */
+export function describePathRule(condition) {
+  if (!condition) return "If no other path matches";
+  if (!condition.path) return "Set the rule for this path";
+  const op = FILTER_OPERATORS.find((o) => o.value === condition.operator)?.label || "equals";
+  return condition.operator === "EXISTS" ? `If ${condition.path} exists` : `If ${condition.path} ${op} "${condition.value ?? ""}"`;
 }
 
 export function formatSeconds(s) {

@@ -2,6 +2,7 @@
 
 import { Field, Input, Select, Textarea } from "@/components/ui";
 import { FILTER_OPERATORS, formatSeconds } from "../stepTypes";
+import { FieldPathInput } from "./ContainerSetups";
 
 function NameField({ draft, updateDraft }) {
   return (
@@ -12,14 +13,14 @@ function NameField({ draft, updateDraft }) {
 }
 
 /** Filter: stop the run unless a field matches. */
-export function FilterSetup({ draft, updateDraft }) {
+export function FilterSetup({ draft, updateDraft, fieldSuggestions = [] }) {
   const config = draft.config || {};
   const setConfig = (patch) => updateDraft({ config: { ...config, ...patch } });
   return (
     <div className="space-y-5">
       <NameField draft={draft} updateDraft={updateDraft} />
       <Field label="Field" hint="Path to a value, e.g. trigger.issue.title or trigger.email.from.">
-        <Input placeholder="trigger.issue.title" value={config.path || ""} onChange={(e) => setConfig({ path: e.target.value })} className="font-mono text-[13px]" />
+        <FieldPathInput value={config.path || ""} onChange={(path) => setConfig({ path })} suggestions={fieldSuggestions} />
       </Field>
       <Field label="Condition">
         <Select value={config.operator || "EQUALS"} onChange={(e) => setConfig({ operator: e.target.value })}>

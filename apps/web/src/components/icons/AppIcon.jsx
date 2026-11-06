@@ -1,4 +1,4 @@
-import { GitBranch, Hash, Mail, Webhook, Zap } from "lucide-react";
+import { Calculator, GitBranch, Hash, Mail, Type, Webhook, Zap } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 // Neutral symbols per app. To use official logos, put the files in /public and render
@@ -8,6 +8,8 @@ const APPS = {
   slack: { icon: Hash, label: "Slack" },
   gmail: { icon: Mail, label: "Gmail" },
   webhook: { icon: Webhook, label: "Webhook" },
+  formatter: { icon: Type, label: "Formatter" },
+  math: { icon: Calculator, label: "Math" },
 };
 
 const sizes = { sm: "size-7 [&_svg]:size-3.5", md: "size-9 [&_svg]:size-4", lg: "size-11 [&_svg]:size-5" };

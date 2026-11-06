@@ -34,6 +34,8 @@ router.post("/", requireAuth, async (req, res) => {
   const context = {
     trigger: sampleContext.trigger || sampleContext || {},
     steps: sampleContext.steps || {},
+    // A step inside a Loop is tested with one sample item ({{loopItem}}, {{loopIndex}}).
+    ...(sampleContext.loopItem !== undefined && { loopItem: sampleContext.loopItem, loopIndex: 0 }),
   };
 
   try {

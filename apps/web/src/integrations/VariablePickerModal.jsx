@@ -22,12 +22,14 @@ function flattenObject(obj, prefix = "") {
   return result;
 }
 
+// step.number: the card's number on the canvas (set by the builder; steps can be nested).
 function stepTabLabel(step, idx) {
+  if (step.type === "LOOP" && step.isCurrentLoop) return "Loop item";
   const c = step.config || {};
   const name = c.provider
     ? getIntegrationAction(c.provider, c.action)?.name || getIntegration(c.provider)?.name || c.provider
     : step.name || step.type;
-  return `${idx + 2}. ${name}`;
+  return `${step.number ?? idx + 2}. ${name}`;
 }
 
 /** Inline panel for inserting trigger fields or earlier steps' outputs into a field. */
@@ -43,7 +45,12 @@ export function VariablePickerModal({ sampleData = {}, steps = [], onSelect, onC
       : getStepOutputVariables(steps.find((s) => s.id === activeTab) || {});
   const shown = items.filter(matches);
 
-  const tabs = [{ id: "trigger", label: "1. Trigger" }, ...steps.map((s, i) => ({ id: s.id, label: stepTabLabel(s, i) }))];
+  // Only steps with something to insert get a tab (Filters, Paths and Delays have no output).
+  const tabs = [
+    { id: "trigger", label: "1. Trigger" },
+    ...steps.map((s, i) => ({ step: s, i })).filter(({ step }) => getStepOutputVariables(step).length > 0)
+      .map(({ step, i }) => ({ id: step.id, label: stepTabLabel(step, i) })),
+  ];
 
   return (
     <div className="mt-1 space-y-2.5 rounded-card border border-line bg-surface p-3 shadow-raised">

@@ -1,29 +1,60 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Search, SearchX, Unplug, X } from "lucide-react";
 import { authFetch } from "@/lib/api";
 import { readOAuthResult, startOAuth } from "@/lib/oauth";
 import { integrationsList } from "@/integrations";
 import { AppShell, PageHeader } from "@/components/layout";
-import { Alert, Button, Card, Modal, Toast } from "@/components/ui";
-import { AppConnectionCard } from "@/features/connections/AppConnectionCard";
+import { Alert, Button, EmptyState, Input, Modal, Tabs, Toast } from "@/components/ui";
+import { AppDetail } from "@/features/connections/AppDetail";
+import { AppTile, AppTileSkeleton } from "@/features/connections/AppTile";
+import { Drawer } from "@/features/connections/Drawer";
+import {
+  STATUS_FILTERS, accountLabel, buildAppCatalog, disconnectWarning, filterApps, groupConnections, statusCounts,
+} from "@/features/connections/appsDirectory";
 
-const APP_NAMES = Object.fromEntries(integrationsList.map((a) => [a.id, a.name]));
+const APPS = buildAppCatalog(integrationsList);
+const APP_NAMES = Object.fromEntries(APPS.map((a) => [a.id, a.name]));
+const SECTIONS = [
+  { kind: "oauth", title: "Connect your accounts" },
+  { kind: "builtin", title: "Built-in tools" },
+];
+const DRAWER_TITLE_ID = "app-drawer-title";
 
-export default function ConnectionsPage() {
+/** Apps directory: every app Zaps can use, the accounts connected to each, and what it can do. */
+export default function AppsPage() {
   const [connections, setConnections] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   // Result of an OAuth round trip: the server redirects back here with ?connected=... or ?error=...
   const [oauthResult, setOauthResult] = useState(null);
+  const [newConnectionId, setNewConnectionId] = useState(null);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("all");
+  const [openAppId, setOpenAppId] = useState(null);
   const [disconnectTarget, setDisconnectTarget] = useState(null); // { app, conn }
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [toast, setToast] = useState(null);
+  const searchRef = useRef(null);
 
+  // ?app=slack opens that app (OAuth returns here with it, so the new account is in view).
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
     const result = readOAuthResult(window.location.search);
-    if (!result) return;
-    queueMicrotask(() => setOauthResult(result));
+    const appId = params.get("app");
+    if (!result && !appId) return;
+    queueMicrotask(() => {
+      if (result?.tone === "danger") setOauthResult(result);
+      else {
+        if (result) {
+          setNewConnectionId(params.get("connectionId"));
+          setToast({ tone: "success", message: `${APP_NAMES[result.provider] || "Account"} connected. You can now use it in your Zaps.` });
+        }
+        const open = result?.provider || appId;
+        if (APP_NAMES[open]) setOpenAppId(open);
+      }
+    });
     window.history.replaceState({}, document.title, window.location.pathname);
   }, []);
 
@@ -32,6 +63,18 @@ export default function ConnectionsPage() {
     const timer = setTimeout(() => setToast(null), 4000);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  // "/" jumps to the search box, like most directories.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "/" || e.metaKey || e.ctrlKey || openAppId) return;
+      if (e.target.closest?.("input, textarea, select, [contenteditable]")) return;
+      e.preventDefault();
+      searchRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [openAppId]);
 
   const loadConnections = useCallback(async () => {
     setIsLoading(true);
@@ -53,8 +96,14 @@ export default function ConnectionsPage() {
     queueMicrotask(loadConnections);
   }, [loadConnections]);
 
+  const byApp = useMemo(() => groupConnections(connections), [connections]);
+  const counts = useMemo(() => statusCounts(APPS, byApp), [byApp]);
+  const rows = useMemo(() => filterApps(APPS, { query, status }, byApp), [query, status, byApp]);
+  const openApp = APPS.find((a) => a.id === openAppId) || null;
+
   const handleConnect = (provider) => {
-    if (!startOAuth(provider, "/connections")) {
+    // Come back with the app open, so the new account shows up right where they started.
+    if (!startOAuth(provider, `/connections?app=${encodeURIComponent(provider)}`)) {
       setToast({ tone: "danger", message: "Please log in again to connect an account." });
     }
   };
@@ -78,51 +127,122 @@ export default function ConnectionsPage() {
     }
   };
 
+  const clearFilters = () => {
+    setQuery("");
+    setStatus("all");
+  };
+
+  const disconnectUsedBy = disconnectTarget?.conn.usedBy;
+
   return (
     <AppShell>
-      <PageHeader title="Connections" description="Connect the accounts your Zaps use. You can connect more than one account per app." />
+      <PageHeader title="Apps" description="Connect the apps your Zaps use and see what each one can do. You can connect more than one account per app." />
 
       {oauthResult && (
-        <Alert
-          tone={oauthResult.tone}
-          title={oauthResult.tone === "danger" ? "Connection failed" : `${APP_NAMES[oauthResult.provider] || "Account"} connected`}
-          onDismiss={() => setOauthResult(null)}
-          className="mb-6"
-        >
-          {oauthResult.tone === "danger" ? oauthResult.message : "You can now use it in your Zaps."}
+        <Alert tone="danger" title="Connection failed" onDismiss={() => setOauthResult(null)} className="mb-6">
+          {oauthResult.message}
         </Alert>
       )}
 
       {loadError && (
-        <Alert tone="danger" title="Couldn't load your connections" className="mb-6">
+        <Alert tone="danger" title="Couldn't load your connected accounts" className="mb-6">
           {loadError}{" "}
           <button type="button" onClick={loadConnections} className="font-medium text-ink underline underline-offset-2 cursor-pointer">Try again</button>
         </Alert>
       )}
 
-      {isLoading ? (
-        <div className="grid gap-4 lg:grid-cols-3">
-          {[0, 1, 2].map((i) => <Card key={i} className="h-56 animate-pulse bg-subtle/60" />)}
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative w-full sm:max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-faint" aria-hidden="true" />
+          <Input
+            ref={searchRef}
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === "Escape" && setQuery("")}
+            placeholder="Search apps, triggers and actions"
+            aria-label="Search apps, triggers and actions"
+            className="pl-9 pr-9 [&::-webkit-search-cancel-button]:hidden"
+          />
+          {query ? (
+            <button type="button" onClick={() => { setQuery(""); searchRef.current?.focus(); }} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-ink-faint hover:bg-subtle hover:text-ink cursor-pointer">
+              <X className="size-3.5" />
+            </button>
+          ) : (
+            <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded border border-line bg-subtle px-1.5 font-mono text-[11px] text-ink-faint sm:block">/</kbd>
+          )}
         </div>
+        <Tabs
+          value={status}
+          onChange={setStatus}
+          className="w-full sm:w-auto [&>button]:flex-1 [&>button]:justify-center [&>button]:whitespace-nowrap [&>button]:px-2 sm:[&>button]:flex-none sm:[&>button]:px-3"
+          items={STATUS_FILTERS.map((f) => ({
+            id: f.id,
+            label: (
+              <>
+                {f.label}
+                {!isLoading && <span className="tabular-nums text-ink-faint">{counts[f.id]}</span>}
+              </>
+            ),
+          }))}
+        />
+      </div>
+
+      {isLoading ? (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-busy="true" aria-label="Loading apps">
+          {[0, 1, 2, 3, 4, 5].map((i) => <AppTileSkeleton key={i} />)}
+        </div>
+      ) : rows.length === 0 ? (
+        <EmptyState
+          icon={query ? <SearchX className="size-5" /> : <Unplug className="size-5" />}
+          title={query ? `No apps match “${query.trim()}”` : status === "connected" ? "No connected apps yet" : "Every app is connected"}
+          description={
+            query ? "Try an app name, or something you want to do, like “send email” or “new issue”." :
+            status === "connected" ? "Connect an account and it will show up here." :
+            "You've connected an account for every app that needs one."
+          }
+          action={<Button variant="outline" onClick={clearFilters}>{query ? "Clear search" : "Show all apps"}</Button>}
+        />
       ) : (
-        <div className="grid items-start gap-4 lg:grid-cols-3">
-          {integrationsList.map((app) => (
-            <AppConnectionCard
-              key={app.id}
-              app={app}
-              connections={connections.filter((c) => c.provider === app.id)}
-              onConnect={handleConnect}
-              onDisconnect={(a, conn) => setDisconnectTarget({ app: a, conn })}
-            />
-          ))}
+        <div className="space-y-8">
+          {SECTIONS.map((section) => {
+            const sectionRows = rows.filter((r) => r.app.kind === section.kind);
+            if (sectionRows.length === 0) return null;
+            return (
+              <section key={section.kind} aria-labelledby={`apps-${section.kind}`}>
+                <h2 id={`apps-${section.kind}`} className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-faint">{section.title}</h2>
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {sectionRows.map(({ app, match }) => (
+                    <AppTile key={app.id} app={app} accounts={byApp[app.id]} match={match} onOpen={setOpenAppId} onConnect={handleConnect} />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
         </div>
       )}
+
+      <p className="sr-only" aria-live="polite">{isLoading ? "" : `${rows.length} ${rows.length === 1 ? "app" : "apps"} shown`}</p>
+
+      <Drawer open={Boolean(openApp)} onClose={() => setOpenAppId(null)} labelledBy={DRAWER_TITLE_ID} suspended={Boolean(disconnectTarget)}>
+        {openApp && (
+          <AppDetail
+            app={openApp}
+            accounts={byApp[openApp.id] || []}
+            titleId={DRAWER_TITLE_ID}
+            newConnectionId={newConnectionId}
+            onClose={() => setOpenAppId(null)}
+            onConnect={handleConnect}
+            onDisconnect={(app, conn) => setDisconnectTarget({ app, conn })}
+          />
+        )}
+      </Drawer>
 
       <Modal
         open={Boolean(disconnectTarget)}
         onClose={() => !isDisconnecting && setDisconnectTarget(null)}
-        title={`Disconnect ${disconnectTarget?.conn.email || "this account"}?`}
-        description={`Zaps that use this ${disconnectTarget?.app.name || ""} account will stop working until you choose another account.`}
+        title={`Disconnect ${disconnectTarget ? accountLabel(disconnectTarget.app.id, disconnectTarget.conn) : "this account"}?`}
+        description={disconnectTarget ? disconnectWarning(disconnectTarget.app.name, disconnectUsedBy) : ""}
         footer={
           <>
             <Button variant="secondary" onClick={() => setDisconnectTarget(null)} disabled={isDisconnecting}>Cancel</Button>

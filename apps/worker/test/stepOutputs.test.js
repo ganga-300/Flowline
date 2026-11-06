@@ -47,6 +47,10 @@ const configs = {
   "slack:send_message": { channel: "C1", text: "hi" },
   "slack:send_dm": { userId: "U1", text: "hi" },
   "gmail:send_email": { to: "a@example.com", subject: "s", body: "b" },
+  "formatter:capitalize_text": { text: "hello world", mode: "title" },
+  "formatter:format_date": { dateString: "2026-01-02", formatStyle: "iso" },
+  "formatter:extract_regex": { text: "Fix BUG-42 now", pattern: "BUG-\\d+" },
+  "math:calculate": { operation: "add", valueA: "40", valueB: "2" },
 };
 const connFor = { github: "c_gh", slack: "c_sl", gmail: "c_gm" };
 

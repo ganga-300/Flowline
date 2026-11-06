@@ -7,6 +7,7 @@ const { zapExecutionQueue } = require("../Queue");
 const { queueRun } = require("../../../worker/src/runQueue");
 const { validateTrigger } = require("../lib/triggerValidation");
 const { nestedDelayError } = require("../lib/stepValidation");
+const { planStepTree, saveStepTree } = require("../lib/stepTree");
 
 // Every account referenced by the trigger or a step must belong to this user;
 // otherwise a Zap could act through someone else's Gmail/Slack/GitHub.
@@ -68,7 +69,11 @@ router.post("/",requireAuth, async (req, res) => {
   if (!name || !trigger || !trigger.type) {
     return res.status(400).json({ error: "Name and trigger.type are required" });
   }
-  const triggerError = validateTrigger(trigger) || nestedDelayError(steps);
+  if (status !== undefined && status !== "ENABLED" && status !== "DISABLED") {
+    return res.status(400).json({ error: 'status must be "ENABLED" or "DISABLED"' });
+  }
+  const tree = planStepTree(steps);
+  const triggerError = validateTrigger(trigger) || tree.error || nestedDelayError(steps);
   if (triggerError) {
     return res.status(400).json({ error: triggerError });
   }
@@ -82,56 +87,49 @@ router.post("/",requireAuth, async (req, res) => {
       ? crypto.randomBytes(16).toString("hex")
       : undefined;
 
-  const zap = await prisma.zap.create({
-    data: {
-      zapName: name,
-      status: status || "ENABLED",
-      userId: req.userId,
-      trigger: {
-        create: {
-          type: trigger.type,
-          config: trigger.config || {},
-          pollIntervalSec: trigger.pollIntervalSec,
-          ...(webhookToken && { webhookToken }),
-          ...((trigger.connectionId || trigger.config?.connectionId) && {
-            connectionId: trigger.connectionId || trigger.config?.connectionId,
-          }),
+  // Steps are created after the Zap (parents before children) so nested steps can be
+  // linked to their parent's new id; all in one transaction.
+  const zap = await prisma.$transaction(async (tx) => {
+    const created = await tx.zap.create({
+      data: {
+        zapName: name,
+        status: status || "ENABLED",
+        userId: req.userId,
+        trigger: {
+          create: {
+            type: trigger.type,
+            config: trigger.config || {},
+            pollIntervalSec: trigger.pollIntervalSec,
+            ...(webhookToken && { webhookToken }),
+            ...((trigger.connectionId || trigger.config?.connectionId) && {
+              connectionId: trigger.connectionId || trigger.config?.connectionId,
+            }),
+          },
         },
       },
-      ...(Array.isArray(steps) && steps.length > 0 && {
-        steps: {
-          create: steps.map((s) => ({
-            type: s.type,
-            name: s.name,
-            config: s.config || {},
-            order: s.order,
-            parentStepId: s.parentStepId,
-            branchCondition: s.branchCondition,
-          })),
-        },
-      }),
-    },
-    include: {
-      trigger: true,
-      steps: {
-        orderBy: { order: "asc" },
-      },
-    },
+    });
+    await saveStepTree(tx, created.id, tree.ordered);
+    return tx.zap.findFirst({
+      where: { id: created.id },
+      include: { trigger: true, steps: { orderBy: { order: "asc" } } },
+    });
   });
 
   return res.status(201).json({ zap });
 });
 
 // PUT /zaps/:id - edit a published Zap (name, trigger and steps).
-// Existing steps are updated in place by id so their run history (StepExecution rows,
-// deleted on cascade with a step) and `ref` (used by {{steps.<ref>...}}) are kept.
+// The request carries the whole step tree. Existing steps are updated in place by id so their
+// run history (StepExecution rows, deleted on cascade with a step) and `ref` (used by
+// {{steps.<ref>...}}) are kept; saved steps missing from the request are deleted.
 router.put("/:id", requireAuth, async (req, res) => {
   try {
     const { name, trigger, steps = [] } = req.body;
     if (!name || !trigger || !trigger.type) {
       return res.status(400).json({ error: "Name and trigger.type are required" });
     }
-    const triggerError = validateTrigger(trigger);
+    const tree = planStepTree(steps);
+    const triggerError = validateTrigger(trigger) || tree.error || nestedDelayError(steps);
     if (triggerError) {
       return res.status(400).json({ error: triggerError });
     }
@@ -150,10 +148,6 @@ router.put("/:id", requireAuth, async (req, res) => {
     const existingStepIds = new Set(existing.steps.map((st) => st.id));
     if (steps.some((st) => st.id && !existingStepIds.has(st.id))) {
       return res.status(400).json({ error: "A step in this request doesn't belong to this Zap." });
-    }
-    const delayError = nestedDelayError(steps, existing.steps);
-    if (delayError) {
-      return res.status(400).json({ error: delayError });
     }
 
     const connectionId = trigger.connectionId || trigger.config?.connectionId || null;
@@ -178,24 +172,8 @@ router.put("/:id", requireAuth, async (req, res) => {
         await tx.trigger.create({ data: { zapId: existing.id, ...triggerData } });
       }
 
-      // Remove top-level steps the user deleted (the builder only edits top-level steps).
-      const keptIds = steps.map((st) => st.id).filter(Boolean);
-      await tx.step.deleteMany({ where: { zapId: existing.id, parentStepId: null, id: { notIn: keptIds } } });
-
-      for (const st of steps) {
-        const data = {
-          type: st.type,
-          name: st.name || `${st.type} Step`,
-          config: st.config || {},
-          order: st.order,
-          connectionId: st.connectionId || st.config?.connectionId || null,
-        };
-        if (st.id) {
-          await tx.step.update({ where: { id: st.id }, data });
-        } else {
-          await tx.step.create({ data: { zapId: existing.id, ...data } });
-        }
-      }
+      const savedIds = await saveStepTree(tx, existing.id, tree.ordered, existingStepIds);
+      await tx.step.deleteMany({ where: { zapId: existing.id, id: { notIn: savedIds } } });
     });
 
     const zap = await prisma.zap.findFirst({

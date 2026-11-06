@@ -21,6 +21,7 @@ function reset() {
              { id: "r_b", zapId: "z_b", status: "SUCCESS", triggerPayload: { email: { subject: "bob private" } } }],
     connection: [{ id: "conn_a", userId: "alice", provider: "slack:A", accessToken: "a-token" },
                  { id: "conn_b", userId: "bob", provider: "slack:B", accessToken: "b-token" }],
+    step: [],
   };
 }
 const relation = { zapRun: { zap: "zap" }, trigger: { zap: "zap" } };
@@ -45,8 +46,10 @@ const model = (name) => ({
 const created = [];
 stub(path.join(__dirname, "../src/prismaClient.js"), {
   zap: { ...model("zap"), create: async ({ data }) => { created.push(data); return { id: "z_new", ...data }; } },
-  trigger: model("trigger"), zapRun: model("zapRun"), connection: model("connection"),
+  trigger: model("trigger"), zapRun: model("zapRun"), connection: model("connection"), step: model("step"),
 });
+const fakePrisma = require.cache[require.resolve(path.join(__dirname, "../src/prismaClient.js"))].exports;
+fakePrisma.$transaction = async (fn) => fn(fakePrisma);
 stub(path.join(__dirname, "../src/Queue.js"), { zapExecutionQueue: { add: async () => {} } });
 
 let handlerCalls = 0;

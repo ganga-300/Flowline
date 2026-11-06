@@ -2,13 +2,15 @@
 
 import { Play } from "lucide-react";
 import { Alert, Button } from "@/components/ui";
+import { needsAccount } from "@/integrations";
 import { ValueTable } from "./ValueTable";
 
 /** Test tab for a step: run it once with the sample trigger data. */
 export function StepTest({ draft, testResult, isTesting, onTest }) {
+  // Built-in tools (Formatter, Math) only compute a value, so testing them is safe.
   const realWarning =
     draft.type !== "ACTION" ? null :
-    draft.config?.provider ? "This really runs the action, so it will post the message, send the email or create the issue." :
+    draft.config?.provider ? (needsAccount(draft.config.provider) ? "This really runs the action, so it will post the message, send the email or create the issue." : null) :
     "This really sends the HTTP request.";
   const ok = testResult?.status === "SUCCESS";
   const output = testResult?.output && typeof testResult.output === "object"

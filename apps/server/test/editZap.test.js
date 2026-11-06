@@ -128,13 +128,36 @@ test("missing name or trigger type is a 400", async () => {
   assert.equal((await put("alice", "z1", { name: "x", trigger: {}, steps: [] })).status, 400);
 });
 
-test("a step nested under a Branch or Loop can't be turned into a Delay (the worker can't pause there)", async () => {
-  db.step.push({ id: "s3", zapId: "z1", type: "ACTION", name: "Nested", order: 0, connectionId: null, parentStepId: "s2", config: {} });
-  const out = await put("alice", "z1", { name: "x", trigger: githubTrigger(), steps: [slackStep(), { id: "s3", type: "DELAY", order: 1, config: { seconds: 60 } }] });
+test("a Delay nested under another step is rejected; a top-level Delay is fine", async () => {
+  const loop = { id: "s2", type: "LOOP", name: "Each", order: 1, config: { ref: "step-2", arrayPath: "trigger.items" } };
+  const out = await put("alice", "z1", { name: "x", trigger: githubTrigger(), steps: [slackStep(), loop, { type: "DELAY", order: 0, parentRef: "step-2", config: { seconds: 60 } }] });
   assert.equal(out.status, 400);
-  assert.match(out.body.error, /Delay step can't be inside a Branch or Loop/);
-  assert.equal(db.step.find((s) => s.id === "s3").type, "ACTION");
-  // A top-level Delay is fine.
+  assert.match(out.body.error, /Delay step can.t be inside a Branch or Loop/);
+  assert.equal(db.step.length, 2, "nothing saved");
   const ok = await put("alice", "z1", { name: "x", trigger: githubTrigger(), steps: [slackStep(), { type: "DELAY", order: 1, config: { seconds: 60 } }] });
   assert.equal(ok.status, 200);
+});
+
+test("saves the whole step tree: nested steps link to their parent, removed steps (any level) are deleted", async () => {
+  db.step.push({ id: "s_old_child", zapId: "z1", type: "ACTION", name: "Old", order: 0, connectionId: null, parentStepId: "s2", config: {} });
+  const steps = [
+    slackStep(),
+    { id: "s2", type: "BRANCH", name: "Paths", order: 1, config: { ref: "step-2" } },
+    { type: "ACTION", name: "VIP", order: 0, parentRef: "step-2", branchCondition: { path: "trigger.vip", operator: "EQUALS", value: "yes" }, config: { ref: "step-3", url: "https://x.test" } },
+    { type: "ACTION", name: "Then", order: 0, parentRef: "step-3", config: { ref: "step-4", url: "https://y.test" } },
+  ];
+  const out = await put("alice", "z1", { name: "x", trigger: githubTrigger(), steps });
+  assert.equal(out.status, 200);
+  const byRef = Object.fromEntries(db.step.map((s) => [s.config.ref, s]));
+  assert.equal(byRef["step-2"].id, "s2", "edited in place");
+  assert.equal(byRef["step-3"].parentStepId, "s2");
+  assert.deepEqual(byRef["step-3"].branchCondition, { path: "trigger.vip", operator: "EQUALS", value: "yes" });
+  assert.equal(byRef["step-4"].parentStepId, byRef["step-3"].id);
+  assert.equal(db.step.some((s) => s.id === "s_old_child"), false, "nested step missing from the request is deleted");
+});
+
+test("a parentRef that isn.t in the request is a 400", async () => {
+  const out = await put("alice", "z1", { name: "x", trigger: githubTrigger(), steps: [slackStep(), { type: "ACTION", order: 0, parentRef: "nope", config: { ref: "step-9" } }] });
+  assert.equal(out.status, 400);
+  assert.match(out.body.error, /isn.t in this Zap/);
 });

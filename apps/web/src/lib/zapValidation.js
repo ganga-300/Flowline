@@ -1,5 +1,6 @@
 // Checks run before publishing a Zap. Returns a user-facing error message, or null if OK.
 // Kept free of React so it can be unit-tested.
+import { flattenSteps, stepNumbers, treeProblem } from "./stepTree.js";
 
 const OAUTH_PROVIDERS = { github: "GitHub", gmail: "Gmail", slack: "Slack" };
 
@@ -14,15 +15,17 @@ export function validateZapForPublish({ trigger, steps = [] }) {
     if (provider === "slack" && !trigger.config?.channel) return "Please select a Slack channel in the trigger step.";
   }
 
-  for (let i = 0; i < steps.length; i++) {
-    const s = steps[i];
+  // Steps are numbered in run order (the trigger is 1), including steps inside Paths and Loops.
+  const numbers = stepNumbers(steps);
+  const label = (s) => `Step ${numbers.get(s.id)}`; // same number as the card on the canvas
+  for (const s of flattenSteps(steps)) {
     if (s.type !== "ACTION") continue;
-    if (!s.config?.provider && !s.config?.url) return `Step ${i + 1} is incomplete. Please select an app to continue.`;
+    if (!s.config?.provider && !s.config?.url) return `${label(s)} is incomplete. Please select an app to continue.`;
     const name = OAUTH_PROVIDERS[s.config?.provider];
     if (name) {
-      if (!s.config.action) return `Step ${i + 1}: please choose a ${name} action.`;
-      if (!connectionOf(s)) return `Step ${i + 1}: please choose a ${name} account.`;
+      if (!s.config.action) return `${label(s)}: please choose a ${name} action.`;
+      if (!connectionOf(s)) return `${label(s)}: please choose a ${name} account.`;
     }
   }
-  return null;
+  return treeProblem(steps, label);
 }

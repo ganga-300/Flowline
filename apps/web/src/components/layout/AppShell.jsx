@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, LayoutGrid, LogOut, Menu, Plug, Plus, X } from "lucide-react";
+import { Bell, History, LayoutGrid, LogOut, Menu, Plug, Plus, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, Spinner } from "@/components/ui";
 import { useAuthProtection } from "@/lib/useAuthProtection";
@@ -11,7 +11,8 @@ import { Logo } from "./Logo";
 
 const NAV = [
   { href: "/dashboard", label: "Zaps", icon: LayoutGrid },
-  { href: "/connections", label: "Connections", icon: Plug },
+  { href: "/history", label: "Zap History", icon: History },
+  { href: "/connections", label: "Apps", icon: Plug },
   { href: "/alerts", label: "Alerts", icon: Bell },
 ];
 
