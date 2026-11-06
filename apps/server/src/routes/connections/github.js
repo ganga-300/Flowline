@@ -118,13 +118,27 @@ router.get("/callback", async (req, res) => {
 
     const providerValue = username ? `github:${username}` : "github";
 
-    const connection = await prisma.connection.create({
-      data: {
-        provider: providerValue,
-        accessToken: tokenData.access_token,
-        userId: req.userId,
-      },
-    });
+    // Reconnecting the same GitHub account refreshes its existing row instead of adding a
+    // duplicate. Without a known login we can't tell accounts apart, so always create.
+    const existing = username
+      ? await prisma.connection.findFirst({
+          where: { userId: req.userId, provider: providerValue },
+          orderBy: { createdAt: "desc" },
+        })
+      : null;
+
+    const connection = existing
+      ? await prisma.connection.update({
+          where: { id: existing.id },
+          data: { accessToken: tokenData.access_token },
+        })
+      : await prisma.connection.create({
+          data: {
+            provider: providerValue,
+            accessToken: tokenData.access_token,
+            userId: req.userId,
+          },
+        });
 
     return res.redirect(`${frontendAppUrl}${returnUrl}${redirectSep}connected=github&connectionId=${connection.id}`);
   } catch (err) {

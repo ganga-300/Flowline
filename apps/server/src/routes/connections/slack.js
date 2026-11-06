@@ -110,16 +110,30 @@ router.get("/callback", async (req, res) => {
       return res.redirect(`${frontendAppUrl}${returnUrl}${redirectSep}error=${encodeURIComponent(tokenData.error || "Slack token exchange failed")}`);
     }
 
-    const teamName = tokenData.team?.name || "Workspace";
-    const providerValue = `slack:${teamName}`;
+    const knownTeamName = tokenData.team?.name || "";
+    const providerValue = `slack:${knownTeamName || "Workspace"}`;
 
-    const connection = await prisma.connection.create({
-      data: {
-        provider: providerValue,
-        accessToken: tokenData.access_token,
-        userId: req.userId,
-      },
-    });
+    // Reconnecting the same workspace refreshes its existing row instead of adding a
+    // duplicate. The "Workspace" placeholder doesn't identify a workspace, so always create then.
+    const existing = knownTeamName
+      ? await prisma.connection.findFirst({
+          where: { userId: req.userId, provider: providerValue },
+          orderBy: { createdAt: "desc" },
+        })
+      : null;
+
+    const connection = existing
+      ? await prisma.connection.update({
+          where: { id: existing.id },
+          data: { accessToken: tokenData.access_token },
+        })
+      : await prisma.connection.create({
+          data: {
+            provider: providerValue,
+            accessToken: tokenData.access_token,
+            userId: req.userId,
+          },
+        });
 
     return res.redirect(`${frontendAppUrl}${returnUrl}${redirectSep}connected=slack&connectionId=${connection.id}`);
   } catch (err) {

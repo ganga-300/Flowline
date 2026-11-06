@@ -134,15 +134,33 @@ router.get("/callback", async (req, res) => {
 
     const providerValue = accountEmail ? `gmail:${accountEmail}` : "gmail";
 
-    // 3. Persist connection record in database linked to req.userId
-    const connection = await prisma.connection.create({
-      data: {
-        provider: providerValue,
-        accessToken: tokenData.access_token,
-        refreshToken: tokenData.refresh_token || null,
-        userId: req.userId,
-      },
-    });
+    // 3. Persist connection record linked to req.userId. Reconnecting the same Google account
+    //    refreshes its existing row instead of adding a duplicate; without a known email we
+    //    can't tell accounts apart, so always create.
+    const existing = accountEmail
+      ? await prisma.connection.findFirst({
+          where: { userId: req.userId, provider: providerValue },
+          orderBy: { createdAt: "desc" },
+        })
+      : null;
+
+    const connection = existing
+      ? await prisma.connection.update({
+          where: { id: existing.id },
+          data: {
+            accessToken: tokenData.access_token,
+            // Google may omit refresh_token on re-consent; keep the stored one in that case.
+            ...(tokenData.refresh_token ? { refreshToken: tokenData.refresh_token } : {}),
+          },
+        })
+      : await prisma.connection.create({
+          data: {
+            provider: providerValue,
+            accessToken: tokenData.access_token,
+            refreshToken: tokenData.refresh_token || null,
+            userId: req.userId,
+          },
+        });
 
     // 4. Redirect user back to starting page with connection ID
     return res.redirect(`${frontendAppUrl}${returnUrl}${redirectSep}connected=gmail&connectionId=${connection.id}`);
