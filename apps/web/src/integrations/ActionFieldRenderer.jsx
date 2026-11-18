@@ -110,7 +110,8 @@ export function ActionFieldRenderer({ field, providerId, value, connectionId, sa
       )}
 
       {type === "dropdown" || type === "dynamic_dropdown" ? (
-        <Select value={value || ""} onChange={(e) => onChange(key, e.target.value)} disabled={loadingOptions || (dynamic && !connectionId)}>
+        // A field with a default shows it (that's the value used when the step runs).
+        <Select value={value || field.defaultValue || ""} onChange={(e) => onChange(key, e.target.value)} disabled={loadingOptions || (dynamic && !connectionId)}>
           <option value="">{selectPlaceholder}</option>
           {options.map((opt) => (
             <option key={opt.value || opt} value={opt.value || opt}>{opt.label || opt}</option>

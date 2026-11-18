@@ -81,7 +81,7 @@ test("updates name, edits a step in place (same id, run history kept) and remove
 });
 
 test("adds new steps and reorders existing ones", async () => {
-  const added = { type: "ACTION", name: "Email", order: 0, connectionId: "c_gh", config: { provider: "github", action: "create_issue", ref: "step-9", config: {} } };
+  const added = { type: "ACTION", name: "Email", order: 0, connectionId: "c_gh", config: { provider: "github", action: "create_issue", ref: "step-9", config: { repo: "o/r", title: "New issue" } } };
   await put("alice", "z1", { name: "x", trigger: githubTrigger(), steps: [added, { ...slackStep(), order: 1 }] });
   assert.equal(db.step.length, 2);
   assert.equal(db.step.find((s) => s.id === "s1").order, 1);
@@ -160,4 +160,20 @@ test("a parentRef that isn.t in the request is a 400", async () => {
   const out = await put("alice", "z1", { name: "x", trigger: githubTrigger(), steps: [slackStep(), { type: "ACTION", order: 0, parentRef: "nope", config: { ref: "step-9" } }] });
   assert.equal(out.status, 400);
   assert.match(out.body.error, /isn.t in this Zap/);
+});
+
+test("a step that isn't set up (required field empty) can't be saved, and nothing changes", async () => {
+  const before = JSON.stringify(db);
+  const halfDone = slackStep({ config: { provider: "slack", action: "send_message", ref: "step-1", config: { channel: "C1", text: "  " } } });
+  const res = await put("alice", "z1", { name: "x", trigger: { type: "WEBHOOK", config: { provider: "webhook", event: "catch_hook" } }, steps: [halfDone] });
+  assert.equal(res.status, 400);
+  assert.equal(res.body.error, 'The step "Slack" isn\'t set up yet: fill in Message Text.');
+  assert.equal(JSON.stringify(db), before);
+});
+
+test("the Zap needs a non-empty name", async () => {
+  const body = (name) => ({ name, trigger: { type: "WEBHOOK", config: { provider: "webhook", event: "catch_hook" } }, steps: [slackStep()] });
+  assert.equal((await put("alice", "z1", body("   "))).status, 400);
+  assert.equal((await put("alice", "z1", body("x".repeat(121)))).status, 400);
+  assert.equal((await put("alice", "z1", body("Issues to Slack"))).status, 200);
 });

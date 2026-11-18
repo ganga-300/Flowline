@@ -7,17 +7,16 @@ import { getPlaceholderSample } from "@/integrations/triggerVariables";
 import { validateZapForPublish } from "@/lib/zapValidation";
 import { toZapPayload, fromSavedZap } from "@/lib/zapForm";
 import { buildSampleStepContext } from "@/integrations/stepOutputs";
+import { getIntegrationAction } from "@/integrations";
 import * as tree from "@/lib/stepTree";
 import { saveBuilderDraft, consumeBuilderDraft, clearBuilderDraft, applyConnectionToDraft } from "@/lib/builderDraft";
 import { createStep } from "./stepTypes";
 
 const PROVIDER_NAMES = { gmail: "Gmail", slack: "Slack", github: "GitHub" };
 
-const initialTrigger = () => ({
-  type: "WEBHOOK",
-  config: { provider: "webhook", event: "catch_hook" },
-  isConfigured: false,
-});
+// A new Zap starts with no trigger app picked: the user chooses, nothing is preselected.
+const initialTrigger = () => ({ type: "WEBHOOK", config: {}, isConfigured: false });
+const initialSteps = () => [createStep("ACTION", "step-1")];
 
 // Ids for new steps; they become the step's ref ({{steps.<id>...}}) when the Zap is saved.
 let idCounter = 0;
@@ -41,11 +40,16 @@ export function useZapBuilder(zapId) {
   const [isLoadingZap, setIsLoadingZap] = useState(Boolean(zapId));
   const [zapName, setZapName] = useState("Untitled Zap");
   const [trigger, setTrigger] = useState(initialTrigger);
-  const [steps, setSteps] = useState(() => [createStep("ACTION", "step-1")]);
+  const [steps, setSteps] = useState(initialSteps);
 
   const [panel, setPanel] = useState(null);
   const [draft, setDraft] = useState(null);
+  // The drawer's copy as it was when opened, so just opening a step isn't an unsaved change.
+  const [panelOrigin, setPanelOrigin] = useState(null);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [askName, setAskName] = useState(false); // "Name your Zap" before the first publish
+  const [published, setPublished] = useState(null); // the Zap just created (success dialog)
+  const [loadError, setLoadError] = useState(null); // { notFound, message } when editing fails to load
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
   // What was last loaded or published, to tell whether there are unsaved changes.
@@ -84,7 +88,11 @@ export function useZapBuilder(zapId) {
         if (restored.panelDraft && restored.activePanel) {
           setDraft(restored.panelDraft);
           setPanel(restored.activePanel);
+          setPanelOrigin(restored.panelOrigin ?? null);
         }
+        // What was saved before the redirect, so unsaved changes are still detected (and
+        // leaving still warns) after coming back from connecting an account.
+        setBaseline(restored.baseline ?? (zapId ? "" : snapshot("Untitled Zap", initialTrigger(), initialSteps())));
       }
       if (connected && connectionIdParam) {
         setNotice(`${PROVIDER_NAMES[connected] || "Account"} connected.`);
@@ -94,7 +102,7 @@ export function useZapBuilder(zapId) {
       if (restored || !zapId) {
         setIsLoadingZap(false);
         setRestoreDone(true);
-        if (!restored) setBaseline(snapshot("Untitled Zap", initialTrigger(), [createStep("ACTION", "step-1")]));
+        if (!restored) setBaseline(snapshot("Untitled Zap", initialTrigger(), initialSteps()));
       }
     });
 
@@ -104,7 +112,9 @@ export function useZapBuilder(zapId) {
       authFetch(`/zaps/${zapId}`)
         .then(async (res) => {
           const data = await res.json().catch(() => ({}));
-          if (!res.ok || !data.zap) throw new Error(data.error || `Could not load this Zap (${res.status})`);
+          if (!res.ok || !data.zap) {
+            throw Object.assign(new Error(data.error || `Could not load this Zap (${res.status})`), { status: res.status });
+          }
           const loaded = fromSavedZap(data.zap);
           setZapName(loaded.zapName);
           setTrigger(loaded.trigger);
@@ -112,7 +122,12 @@ export function useZapBuilder(zapId) {
           setSampleData(getPlaceholderSample(loaded.trigger.config?.provider, loaded.trigger.config?.event, loaded.trigger.config?.repo));
           setBaseline(snapshot(loaded.zapName, loaded.trigger, loaded.steps));
         })
-        .catch((err) => setError(err instanceof TypeError ? "Can't reach the Flowline server right now." : err.message))
+        .catch((err) =>
+          setLoadError({
+            notFound: err.status === 404 || err.status === 400,
+            message: err instanceof TypeError ? "Can't reach the Flowline server right now." : err.message,
+          })
+        )
         .finally(() => {
           setIsLoadingZap(false);
           setRestoreDone(true);
@@ -124,12 +139,15 @@ export function useZapBuilder(zapId) {
   // started by "Connect account" doesn't wipe it. Starts only after the restore check above.
   useEffect(() => {
     if (!restoreDone) return;
-    saveBuilderDraft({ editingZapId: zapId, zapName, trigger, steps, activePanel: panel, panelDraft: draft, sampleData });
-  }, [restoreDone, zapId, zapName, trigger, steps, panel, draft, sampleData]);
+    if (published || loadError) return;
+    saveBuilderDraft({ editingZapId: zapId, zapName, trigger, steps, activePanel: panel, panelDraft: draft, panelOrigin, sampleData, baseline });
+  }, [restoreDone, zapId, zapName, trigger, steps, panel, draft, panelOrigin, sampleData, baseline, published, loadError]);
 
   // ── Drawer ──
   const openTrigger = useCallback(() => {
-    setDraft({ ...trigger, config: { ...trigger.config } });
+    const copy = { ...trigger, config: { ...trigger.config } };
+    setDraft(copy);
+    setPanelOrigin(JSON.stringify(copy));
     setPanel({ target: "trigger", tab: "setup" });
     setError(null);
     setTestResult(null);
@@ -137,7 +155,9 @@ export function useZapBuilder(zapId) {
   }, [trigger]);
 
   const openStep = useCallback((step) => {
-    setDraft(copyForDraft(step));
+    const copy = copyForDraft(step);
+    setDraft(copy);
+    setPanelOrigin(JSON.stringify(copy));
     setPanel({ target: "step", stepId: step.id, tab: "setup" });
     setError(null);
     setTestResult(null);
@@ -146,6 +166,7 @@ export function useZapBuilder(zapId) {
   const closePanel = useCallback(() => {
     setPanel(null);
     setDraft(null);
+    setPanelOrigin(null);
   }, []);
 
   const setTab = useCallback((tab) => setPanel((p) => (p ? { ...p, tab } : p)), []);
@@ -186,7 +207,9 @@ export function useZapBuilder(zapId) {
   const addStep = useCallback((type, where, index) => {
     const step = createStep(type, newId());
     setSteps((prev) => tree.insertStep(prev, where, index, step));
-    setDraft(copyForDraft(step));
+    const copy = copyForDraft(step);
+    setDraft(copy);
+    setPanelOrigin(JSON.stringify(copy));
     setPanel({ target: "step", stepId: step.id, tab: "setup" });
     setTestResult(null);
   }, []);
@@ -241,6 +264,21 @@ export function useZapBuilder(zapId) {
     setSampleStatus(null);
     try {
       const provider = draft?.config?.provider || "webhook";
+      if (provider === "webhook") {
+        // Webhooks: the last request this Zap actually received (only once it's published).
+        if (!draft?.id) return;
+        const res = await authFetch(`/zaps/test-step/sample/${draft.id}`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Couldn't load the last request");
+        if (data.sample) {
+          setSampleData(data.sample);
+          const when = data.receivedAt ? new Date(data.receivedAt).toLocaleString() : null;
+          setSampleStatus({ tone: "success", message: `Showing the last request this Zap received${when ? ` (${when})` : ""}.` });
+        } else {
+          setSampleStatus({ tone: "info", message: "No requests yet. Send a POST request with a JSON body to the webhook URL, then check again." });
+        }
+        return;
+      }
       const res = await authFetch("/zaps/test-step/fetch-sample", {
         method: "POST",
         body: JSON.stringify({
@@ -290,39 +328,56 @@ export function useZapBuilder(zapId) {
   }, [draft, sampleData, panel, previousStepsFor]);
 
   // ── Publish ──
-  const publish = useCallback(async () => {
+  /**
+   * Checks the Zap, asks for a name the first time (when it's still "Untitled Zap"), then
+   * saves it. name: the name chosen in that prompt.
+   */
+  const publish = useCallback(async ({ name } = {}) => {
     setError(null);
+    // An open drawer's changes are included, as if "Save step" was pressed.
+    const current = commitDraft();
+    const validationError = validateZapForPublish(current, { getAction: getIntegrationAction });
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    const finalName = (name ?? zapName).trim();
+    if (!zapId && name === undefined && (!finalName || finalName === "Untitled Zap")) {
+      closePanel();
+      setAskName(true);
+      return;
+    }
+    setAskName(false);
+    if (name !== undefined) setZapName(finalName);
     setIsPublishing(true);
     try {
-      // An open drawer's changes are included, as if "Save step" was pressed.
-      const current = commitDraft();
-      const validationError = validateZapForPublish(current);
-      if (validationError) throw new Error(validationError);
-
-      const payload = toZapPayload({ zapName, trigger: current.trigger, steps: current.steps });
+      const payload = toZapPayload({ zapName: finalName, trigger: current.trigger, steps: current.steps });
       const res = await authFetch(zapId ? `/zaps/${zapId}` : "/zaps", {
         method: zapId ? "PUT" : "POST",
         body: JSON.stringify(payload),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Server responded with status ${res.status}`);
-      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Server responded with status ${res.status}`);
       clearBuilderDraft();
-      setBaseline(snapshot(zapName, current.trigger, current.steps));
+      setBaseline(snapshot(finalName, current.trigger, current.steps));
       leavingRef.current = true;
-      router.push("/dashboard");
+      closePanel();
+      // A new Zap shows what happens next (its webhook URL, when it runs); edits go back.
+      if (zapId || !data.zap) router.push("/dashboard");
+      else setPublished(data.zap);
     } catch (err) {
       setError(err instanceof TypeError ? "Can't reach the Flowline server right now." : err.message || "Couldn't save this Zap.");
     } finally {
       setIsPublishing(false);
     }
-  }, [commitDraft, zapId, zapName, router]);
+  }, [commitDraft, closePanel, zapId, zapName, router]);
 
   // ── Unsaved changes ──
   const isDirty = useMemo(
-    () => baseline !== null && (Boolean(panel) || snapshot(zapName, trigger, steps) !== baseline),
-    [baseline, panel, zapName, trigger, steps]
+    () =>
+      baseline !== null &&
+      (snapshot(zapName, trigger, steps) !== baseline || Boolean(panel && draft && JSON.stringify(draft) !== panelOrigin)),
+    [baseline, panel, draft, panelOrigin, zapName, trigger, steps]
   );
   useEffect(() => {
     if (!isDirty) return;
@@ -344,6 +399,7 @@ export function useZapBuilder(zapId) {
     sampleData, setSampleData, sampleStatus, isFetchingSample, fetchSample,
     testResult, isTesting, testStep,
     publish, isPublishing, error, setError, notice, setNotice,
+    askName, setAskName, published, loadError,
   };
 }
 

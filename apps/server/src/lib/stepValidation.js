@@ -1,3 +1,5 @@
+const { missingStepConfig } = require("../../../worker/src/integrations/requiredConfig");
+
 const NESTED_DELAY_ERROR = "A Delay step can't be inside a Branch or Loop yet. Move it to the main list of steps.";
 
 /**
@@ -13,4 +15,17 @@ function nestedDelayError(steps) {
   return null;
 }
 
-module.exports = { nestedDelayError, NESTED_DELAY_ERROR };
+/**
+ * A step that isn't fully set up (no app picked, a required field empty...) can't be saved:
+ * it would only fail, or worse, run with empty values. Returns a user-facing message or null.
+ */
+function stepConfigError(steps) {
+  if (!Array.isArray(steps)) return null;
+  for (const step of steps) {
+    const missing = missingStepConfig(step);
+    if (missing) return `The step "${step?.name || "Untitled step"}" isn't set up yet: ${missing}`;
+  }
+  return null;
+}
+
+module.exports = { nestedDelayError, stepConfigError, NESTED_DELAY_ERROR };

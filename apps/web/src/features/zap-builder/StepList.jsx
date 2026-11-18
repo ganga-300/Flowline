@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, Copy, Pencil, Plus, Repeat, Trash2 } from "lucide-r
 import { cn } from "@/lib/cn";
 import { allowedKinds, canMove } from "@/lib/stepTree";
 import { describePathRule, describeStepCard, stepEyebrow } from "./stepTypes";
+import { missingSetup } from "./setupProgress";
 import { StepCard } from "./StepCard";
 import { AddStepButton } from "./AddStepButton";
 
@@ -63,8 +64,9 @@ function StepNode({ step, ctx, width }) {
           title={card.title}
           summary={card.summary}
           app={card.app}
-          iconType={step.type === "ACTION" && !card.app && step.config?.url ? "HTTP" : step.type}
-          configured={step.isConfigured}
+          iconType={step.type === "ACTION" && !card.app && step.config?.url !== undefined ? "HTTP" : step.type}
+          // Ready only when everything it needs is filled in (the same rule Publish checks).
+          configured={!missingSetup({ draft: step, getAction: ctx.registry.getIntegrationAction })}
           active={builder.panel?.stepId === step.id}
           onOpen={() => builder.openStep(step)}
           menuItems={menuItems}

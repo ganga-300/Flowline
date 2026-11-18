@@ -2,12 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Alert, Button, Modal, Spinner, Toast } from "@/components/ui";
+import { FileQuestion } from "lucide-react";
+import { Alert, Button, Field, Input, Modal, Spinner, Toast } from "@/components/ui";
 import { useAuthProtection } from "@/lib/useAuthProtection";
 import { flattenSteps, ROOT, stepNumbers } from "@/lib/stepTree";
 import { getIntegration, getIntegrationAction } from "@/integrations";
 import { useZapBuilder } from "./useZapBuilder";
-import { describeTriggerCard } from "./stepTypes";
+import { describeStepCard, describeTriggerCard } from "./stepTypes";
+import { missingSetup } from "./setupProgress";
+import { PublishedDialog } from "./PublishedDialog";
 import { BuilderHeader } from "./BuilderHeader";
 import { StepCard } from "./StepCard";
 import { AddStepButton } from "./AddStepButton";
@@ -29,6 +32,7 @@ export function ZapBuilder() {
   const [pendingDelete, setPendingDelete] = useState(null); // a step with steps inside it
   const [undo, setUndo] = useState(null); // { steps, label } to put back after a delete
   const [leaving, setLeaving] = useState(false);
+  const [nameInput, setNameInput] = useState("");
 
   useEffect(() => {
     if (!notice) return;
@@ -44,10 +48,40 @@ export function ZapBuilder() {
 
   const numbers = useMemo(() => stepNumbers(steps), [steps]);
 
+  // "Name your Zap" starts from a suggestion built from the trigger and the first step.
+  const { askName } = builder;
+  useEffect(() => {
+    if (!askName) return;
+    const first = steps[0] ? describeStepCard(steps[0], registry).title : null;
+    queueMicrotask(() => setNameInput([describeTriggerCard(trigger).title, first].filter(Boolean).join(" → ")));
+  }, [askName, trigger, steps]);
+
   if (!isAuthenticated || builder.isLoadingZap) {
     return (
       <div className="flex min-h-screen items-center justify-center gap-2 bg-canvas text-sm text-ink-muted">
         <Spinner className="size-4" /> {isAuthenticated ? "Loading Zap…" : "Redirecting to login…"}
+      </div>
+    );
+  }
+
+  // Editing a Zap that doesn't exist (deleted, or a bad link) or couldn't be loaded.
+  if (builder.loadError) {
+    const { notFound, message } = builder.loadError;
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-canvas px-6 text-center">
+        <span className="flex size-12 items-center justify-center rounded-full bg-subtle text-ink-muted">
+          <FileQuestion className="size-6" />
+        </span>
+        <div className="space-y-1">
+          <h1 className="text-lg font-semibold text-ink">{notFound ? "This Zap doesn't exist" : "Couldn't load this Zap"}</h1>
+          <p className="max-w-sm text-sm text-ink-muted">
+            {notFound ? "It may have been deleted, or the link is wrong." : message}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          {!notFound && <Button variant="secondary" onClick={() => window.location.reload()}>Try again</Button>}
+          <Button href="/dashboard">Back to Zaps</Button>
+        </div>
       </div>
     );
   }
@@ -75,7 +109,7 @@ export function ZapBuilder() {
         isEditing={builder.isEditing}
         isDirty={builder.isDirty}
         isPublishing={builder.isPublishing}
-        onPublish={builder.publish}
+        onPublish={() => builder.publish()}
         onLeave={leave}
       />
 
@@ -95,7 +129,7 @@ export function ZapBuilder() {
               summary={triggerCard.summary}
               app={triggerCard.app}
               iconType={trigger.type}
-              configured={trigger.isConfigured}
+              configured={!missingSetup({ isTrigger: true, draft: trigger, getAction: getIntegrationAction })}
               active={panel?.target === "trigger"}
               onOpen={builder.openTrigger}
             />
@@ -104,7 +138,7 @@ export function ZapBuilder() {
 
           <StepList steps={steps} where={ROOT} ctx={ctx} width={ROOT_WIDTH} />
 
-          <p className="mt-1 max-w-sm text-center text-xs text-ink-faint">
+          <p className="mt-1 max-w-[min(24rem,calc(100vw-2rem))] text-center text-xs text-ink-faint">
             {stepCount} step{stepCount === 1 ? "" : "s"} · Steps run top to bottom, and each can use data from the steps above it.
           </p>
         </div>
@@ -137,6 +171,34 @@ export function ZapBuilder() {
           </>
         }
       />
+
+      <Modal
+        open={builder.askName}
+        onClose={() => builder.setAskName(false)}
+        title="Name your Zap"
+        description="You'll see this name on your dashboard, in run history and in alerts."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => builder.setAskName(false)}>Cancel</Button>
+            <Button onClick={() => builder.publish({ name: nameInput })} disabled={!nameInput.trim()} loading={builder.isPublishing}>
+              Publish
+            </Button>
+          </>
+        }
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (nameInput.trim()) builder.publish({ name: nameInput });
+          }}
+        >
+          <Field label="Zap name" htmlFor="zap-name">
+            <Input id="zap-name" autoFocus value={nameInput} maxLength={120} onChange={(e) => setNameInput(e.target.value)} onFocus={(e) => e.target.select()} />
+          </Field>
+        </form>
+      </Modal>
+
+      <PublishedDialog zap={builder.published} onDone={() => router.push("/dashboard")} />
 
       {undo ? (
         <Toast tone="info" onClose={() => setUndo(null)}>

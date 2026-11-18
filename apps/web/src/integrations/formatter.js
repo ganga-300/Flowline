@@ -15,7 +15,7 @@ export const formatterIntegration = {
           label: "Input Text",
           type: "pill_input",
           required: true,
-          placeholder: "e.g. {{trigger.body.name}}",
+          placeholder: "e.g. {{trigger.name}}",
           description: "The text string to transform",
         },
         {
@@ -42,7 +42,7 @@ export const formatterIntegration = {
           label: "Input Date",
           type: "pill_input",
           required: true,
-          placeholder: "e.g. {{trigger.body.createdAt}}",
+          placeholder: "e.g. {{trigger.createdAt}}",
           description: "Raw date string or timestamp",
         },
         {

@@ -109,7 +109,7 @@ test("POST /zaps - cannot publish a Zap that uses another user's connected accou
   const body = (triggerConn, stepConn) => ({
     name: "x",
     trigger: { type: "POLLING", config: { provider: "slack", event: "new_message", channel: "C1", connectionId: triggerConn } },
-    steps: [{ type: "ACTION", name: "s", order: 0, connectionId: stepConn, config: { provider: "slack", action: "send_message", connectionId: stepConn } }],
+    steps: [{ type: "ACTION", name: "s", order: 0, connectionId: stepConn, config: { provider: "slack", action: "send_message", connectionId: stepConn, config: { channel: "C1", text: "hi" } } }],
   });
   assert.equal((await call(h, { userId: "alice", body: body("conn_a", "conn_a") })).status, 201);
   assert.equal((await call(h, { userId: "alice", body: body("conn_b", "conn_a") })).status, 400);

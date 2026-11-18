@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, X } from "lucide-react";
 import { Alert, Button } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -8,7 +8,7 @@ import { stepNumbers } from "@/lib/stepTree";
 import { getIntegration, getIntegrationAction } from "@/integrations";
 import { getStepOutputVariables } from "@/integrations/stepOutputs";
 import { describeStepCard, describeTriggerCard, stepEyebrow } from "./stepTypes";
-import { canTest, findValuePaths, setupStages } from "./setupProgress";
+import { canTest, findValuePaths, missingSetup, setupStages } from "./setupProgress";
 import { StepIcon } from "./StepIcon";
 import { TriggerSetup } from "./setup/TriggerSetup";
 import { ActionSetup } from "./setup/ActionSetup";
@@ -26,6 +26,9 @@ const registry = { getIntegration, getIntegrationAction };
 export function StepDrawer({ builder }) {
   const { panel, draft, closePanel, savePanel, setTab, updateDraft, steps, sampleData, setSampleData, error } = builder;
   const asideRef = useRef(null);
+  // Set (to the open panel's key) when Continue is pressed with setup unfinished, so the
+  // drawer says what's missing; it disappears once that's filled in or another step opens.
+  const [explainFor, setExplainFor] = useState(null);
 
   useEffect(() => {
     if (!panel) return;
@@ -62,11 +65,21 @@ export function StepDrawer({ builder }) {
   // Highlighted stage: Test while testing, otherwise the first setup part still to do.
   const currentId = tab === "test" ? "test" : (stages.find((s) => s.tab === "setup" && !s.done) || stages[0])?.id;
 
+  const problem = missingSetup({ isTrigger, draft, getAction: getIntegrationAction });
+
   const goToStage = (stage) => {
+    if (stage.tab === "test" && problem) return continueToTest();
     setTab(stage.tab);
     if (stage.tab !== "setup") return;
     requestAnimationFrame(() => document.getElementById(`stage-${stage.id}`)?.scrollIntoView({ block: "start", behavior: "smooth" }));
   };
+
+  // Testing needs a finished setup (an account, the required fields...): say what's missing.
+  function continueToTest() {
+    if (!problem) return setTab("test");
+    setExplainFor(openKey);
+    goToStage(stages.find((s) => s.id === problem.stage) || stages[0]);
+  }
 
   let body;
   if (tab === "test") {
@@ -106,7 +119,7 @@ export function StepDrawer({ builder }) {
         className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[500px] flex-col border-l border-line bg-surface shadow-raised outline-none animate-slideLeft"
       >
         <header className="flex items-start gap-3 px-5 pb-3 pt-4">
-          <StepIcon app={isTrigger ? draft.config?.provider : card.app} type={draft.type === "ACTION" && !card.app ? "HTTP" : draft.type} size="md" />
+          <StepIcon app={isTrigger ? draft.config?.provider : card.app} type={draft.type === "ACTION" && !card.app && draft.config?.url !== undefined ? "HTTP" : draft.type} size="md" />
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium text-ink-faint">{stepNumber}. {stepEyebrow(draft.type)}</p>
             <h2 id={titleId} className="truncate text-base font-semibold text-ink">{card.title}</h2>
@@ -152,6 +165,9 @@ export function StepDrawer({ builder }) {
 
         <div className="flex-1 overflow-y-auto px-5 py-5">
           {error && <Alert tone="danger" className="mb-5">{error}</Alert>}
+          {problem && explainFor === openKey && tab === "setup" && (
+            <Alert tone="warning" title="Finish setting up this step first" className="mb-5">{problem.message}</Alert>
+          )}
           {body}
         </div>
 
@@ -167,7 +183,7 @@ export function StepDrawer({ builder }) {
               {testable ? (
                 <>
                   <Button variant="secondary" onClick={savePanel}>Save</Button>
-                  <Button onClick={() => setTab("test")}>
+                  <Button onClick={continueToTest}>
                     Continue <ArrowRight className="size-4" />
                   </Button>
                 </>

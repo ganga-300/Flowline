@@ -83,6 +83,9 @@ function stepConfigForBuilder(step) {
 
 export function fromSavedZap(zap) {
   const t = zap.trigger || { type: "WEBHOOK", config: { provider: "webhook", event: "catch_hook" } };
+  // Webhook triggers saved without an app (e.g. created through the API) are webhooks.
+  const triggerConfig = { ...(t.config || {}) };
+  if (!triggerConfig.provider && t.type === "WEBHOOK") Object.assign(triggerConfig, { provider: "webhook", event: "catch_hook" });
   const steps = fromSavedSteps(zap.steps || [], (s) => ({
     id: s.config?.ref || s.id,
     dbId: s.id,
@@ -94,8 +97,10 @@ export function fromSavedZap(zap) {
   return {
     zapName: zap.zapName || "Untitled Zap",
     trigger: {
+      // id: used to load the last request a webhook received; never sent back on save.
+      ...(t.id && { id: t.id }),
       type: t.type,
-      config: { ...(t.config || {}) },
+      config: triggerConfig,
       ...(t.connectionId && { connectionId: t.connectionId }),
       ...(t.pollIntervalSec && { pollIntervalSec: t.pollIntervalSec }),
       // Shown in the builder so the user can copy the URL; never sent back on save.

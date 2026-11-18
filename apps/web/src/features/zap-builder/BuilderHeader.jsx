@@ -42,7 +42,7 @@ export function BuilderHeader({ zapName, onRename, isEditing, isDirty, isPublish
               <Pencil className="size-3.5 shrink-0 text-ink-faint opacity-0 transition group-hover:opacity-100" />
             </button>
           )}
-          <Badge tone={isEditing ? "neutral" : "primary"} className="hidden shrink-0 sm:inline-flex">{isEditing ? "Editing" : "Draft"}</Badge>
+          <Badge tone={isEditing ? "neutral" : "primary"} className="shrink-0 max-sm:hidden">{isEditing ? "Editing" : "Draft"}</Badge>
           <span
             aria-live="polite"
             className={cn("hidden shrink-0 items-center gap-1.5 text-xs md:inline-flex", isDirty ? "text-warning" : "text-ink-faint")}
@@ -55,7 +55,7 @@ export function BuilderHeader({ zapName, onRename, isEditing, isDirty, isPublish
           </span>
         </div>
 
-        <Button variant="ghost" onClick={onLeave} className="hidden sm:inline-flex">Cancel</Button>
+        <Button variant="ghost" onClick={onLeave} className="max-sm:hidden">Cancel</Button>
         <Button onClick={onPublish} loading={isPublishing}>{isEditing ? "Save changes" : "Publish"}</Button>
       </div>
     </header>

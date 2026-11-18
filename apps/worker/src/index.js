@@ -13,6 +13,7 @@ const { evaluateCondition, resolveTemplate } = require("./conditions");
 const { executeFormatterStep } = require("./formatter");
 const TokenBucket = require("./rateLimiter");
 const { getIntegrationHandler } = require("./integrations/registry");
+const { missingStepConfig } = require("./integrations/requiredConfig");
 const { recordStepOutput, restoreStepOutputs } = require("./stepContext");
 const { runWithRetry, retryableError, executionKey, planRecovery, planRetryCarryOver } = require("./recovery");
 const { resumeJobIdFor, JOB_RETENTION } = require("./runQueue");
@@ -40,6 +41,11 @@ function sleep(ms) {
 async function executeActionStep(step, context) {
   const provider = step.config?.provider;
   const action = step.config?.action;
+
+  // A step saved before it was fully set up fails clearly (and isn't retried) instead of
+  // "succeeding" with empty values. Publishing checks the same rule, so this is a backstop.
+  const missing = missingStepConfig(step);
+  if (missing) throw new Error(`This step isn't fully set up: ${missing} Edit the Zap to finish it.`);
 
   if (provider && action) {
     const handler = getIntegrationHandler(provider, action);
