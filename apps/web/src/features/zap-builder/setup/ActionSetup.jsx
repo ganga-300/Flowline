@@ -10,7 +10,8 @@ const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 export function ActionSetup({ draft, updateDraft, sampleData, previousSteps }) {
   const config = draft.config || {};
   const setConfig = (patch) => updateDraft({ config: { ...config, ...patch } });
-  const isHttp = !config.provider || config.provider === "custom_http";
+  // An HTTP request has no provider but has a url (even an empty one); a new step has neither.
+  const isHttp = !config.provider && config.url !== undefined;
 
   // Name the step after its action until the user types their own name.
   const autoName = (c) => (c.provider ? getIntegrationAction(c.provider, c.action)?.name : c.url !== undefined ? "HTTP request" : null);
@@ -23,7 +24,7 @@ export function ActionSetup({ draft, updateDraft, sampleData, previousSteps }) {
   return (
     <div className="space-y-5">
       <Field label="Step name" hint="Shown on the canvas and in run history.">
-        <Input value={draft.name || ""} onChange={(e) => updateDraft({ name: e.target.value })} />
+        <Input value={draft.name || ""} placeholder="Named after the action you pick" onChange={(e) => updateDraft({ name: e.target.value })} />
       </Field>
 
       <ActionIntegrationSelector
@@ -35,7 +36,7 @@ export function ActionSetup({ draft, updateDraft, sampleData, previousSteps }) {
 
       {isHttp && (
         <>
-          <div className="grid grid-cols-[110px_1fr] gap-2">
+          <div id="stage-configure" className="grid scroll-mt-4 grid-cols-[110px_1fr] gap-2">
             <Field label="Method">
               <Select value={config.method || "POST"} onChange={(e) => setConfig({ method: e.target.value })}>
                 {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}

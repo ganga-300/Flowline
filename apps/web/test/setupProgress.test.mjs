@@ -1,7 +1,7 @@
 // The step drawer's progress strip and the sample-data path helpers.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { canTest, findListPaths, findValuePaths, setupStages } from "../src/features/zap-builder/setupProgress.js";
+import { canTest, findListPaths, findValuePaths, missingSetup, setupStages } from "../src/features/zap-builder/setupProgress.js";
 
 const ids = (stages) => stages.map((s) => `${s.id}${s.done ? "✓" : ""}`);
 const slackAction = { fields: [{ key: "channel", required: true }, { key: "text", required: true }, { key: "emoji", required: false }] };
@@ -42,4 +42,15 @@ test("sample helpers find lists (for Loop) and values (for rules)", () => {
   const sample = { body: { items: [{ id: 1 }], user: { name: "Ana", tags: ["a"] } }, count: 2 };
   assert.deepEqual(findListPaths(sample), ["trigger.body.items", "trigger.body.user.tags"]);
   assert.deepEqual(findValuePaths(sample), ["trigger.body.items", "trigger.body.user.name", "trigger.body.user.tags", "trigger.count"]);
+});
+
+test("missingSetup names the first thing left to do, or null when ready", () => {
+  const getAction = () => ({ fields: [{ key: "text", label: "Input Text", required: true }, { key: "mode", label: "Style", required: true, defaultValue: "title" }] });
+  const fmt = (values) => ({ type: "ACTION", config: { provider: "formatter", action: "capitalize_text", config: values } });
+  assert.deepEqual(missingSetup({ draft: fmt({}), getAction }), { stage: "configure", message: "Fill in Input Text." });
+  assert.equal(missingSetup({ draft: fmt({ text: "{{trigger.name}}" }), getAction }), null, "a field with a default counts as filled");
+  assert.equal(missingSetup({ draft: { type: "ACTION", config: {} } }).stage, "app", "a new action has no app picked");
+  assert.equal(missingSetup({ isTrigger: true, draft: { type: "WEBHOOK", config: {} } }).stage, "app", "a new trigger has no app picked");
+  assert.equal(missingSetup({ isTrigger: true, draft: { config: { provider: "github", event: "new_issue", connectionId: "c" } } }).message, "Choose the repository to watch.");
+  assert.equal(missingSetup({ isTrigger: true, draft: { config: { provider: "webhook", event: "catch_hook" } } }), null);
 });

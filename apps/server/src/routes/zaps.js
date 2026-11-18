@@ -6,7 +6,7 @@ const requireAuth = require("../middleware/auth");
 const { zapExecutionQueue } = require("../Queue");
 const { queueRun } = require("../../../worker/src/runQueue");
 const { validateTrigger } = require("../lib/triggerValidation");
-const { nestedDelayError } = require("../lib/stepValidation");
+const { nestedDelayError, stepConfigError } = require("../lib/stepValidation");
 const { planStepTree, saveStepTree } = require("../lib/stepTree");
 
 // Every account referenced by the trigger or a step must belong to this user;
@@ -62,6 +62,13 @@ router.get("/:id",requireAuth, async (req, res) => {
   res.json({ zap });
 });
 
+const MAX_NAME_LENGTH = 120;
+function nameError(name) {
+  if (typeof name !== "string" || !name.trim()) return "Give the Zap a name.";
+  if (name.trim().length > MAX_NAME_LENGTH) return `Keep the Zap's name under ${MAX_NAME_LENGTH} characters.`;
+  return null;
+}
+
 // POST /zaps - create a Zap with Trigger and Steps
 router.post("/",requireAuth, async (req, res) => {
   const { name, trigger, steps, status } = req.body;
@@ -73,7 +80,7 @@ router.post("/",requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'status must be "ENABLED" or "DISABLED"' });
   }
   const tree = planStepTree(steps);
-  const triggerError = validateTrigger(trigger) || tree.error || nestedDelayError(steps);
+  const triggerError = nameError(name) || validateTrigger(trigger) || tree.error || nestedDelayError(steps) || stepConfigError(steps);
   if (triggerError) {
     return res.status(400).json({ error: triggerError });
   }
@@ -129,7 +136,7 @@ router.put("/:id", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Name and trigger.type are required" });
     }
     const tree = planStepTree(steps);
-    const triggerError = validateTrigger(trigger) || tree.error || nestedDelayError(steps);
+    const triggerError = nameError(name) || validateTrigger(trigger) || tree.error || nestedDelayError(steps) || stepConfigError(steps);
     if (triggerError) {
       return res.status(400).json({ error: triggerError });
     }

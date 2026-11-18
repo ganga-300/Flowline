@@ -26,9 +26,24 @@ test("GitHub trigger without a repo and Slack trigger without a channel are reje
 });
 
 test("action steps need an app, an action and an account", () => {
-  assert.match(validateZapForPublish({ trigger: ghTrigger(), steps: [{ type: "ACTION", config: {} }] }), /Step 2 is incomplete/);
-  assert.match(validateZapForPublish({ trigger: ghTrigger(), steps: [slackStep({ action: "" })] }), /Step 2: please choose a Slack action/);
-  assert.match(validateZapForPublish({ trigger: ghTrigger(), steps: [slackStep(), slackStep({ connectionId: null })] }), /Step 3: please choose a Slack account/);
+  assert.match(validateZapForPublish({ trigger: ghTrigger(), steps: [{ type: "ACTION", config: {} }] }), /Step 2: Choose an app for this step/);
+  assert.match(validateZapForPublish({ trigger: ghTrigger(), steps: [slackStep({ action: "" })] }), /Step 2: Choose a Slack action/);
+  assert.match(validateZapForPublish({ trigger: ghTrigger(), steps: [slackStep(), slackStep({ connectionId: null })] }), /Step 3: Choose a Slack account/);
+});
+
+test("required fields must be filled before publishing (same rule as the Ready badge)", () => {
+  const getAction = () => ({ fields: [{ key: "channel", label: "Channel", required: true }, { key: "text", label: "Message Text", required: true }] });
+  const empty = slackStep({ config: { channel: "", text: " " } });
+  assert.equal(validateZapForPublish({ trigger: ghTrigger(), steps: [empty] }, { getAction }), "Step 2: Fill in Channel and Message Text.");
+  assert.equal(validateZapForPublish({ trigger: ghTrigger(), steps: [slackStep()] }, { getAction }), null);
+});
+
+test("a trigger with no app chosen, and empty Filter/Loop/HTTP steps, are rejected", () => {
+  assert.match(validateZapForPublish({ trigger: { type: "WEBHOOK", config: {} }, steps: [slackStep()] }), /Trigger: Choose the app and event/);
+  const webhook = { type: "WEBHOOK", config: { provider: "webhook", event: "catch_hook" } };
+  assert.match(validateZapForPublish({ trigger: webhook, steps: [{ type: "FILTER", config: { path: "" } }] }), /Step 2: Choose the field/);
+  assert.match(validateZapForPublish({ trigger: webhook, steps: [{ type: "LOOP", config: { arrayPath: "" }, steps: [] }] }), /Step 2: Choose the list/);
+  assert.match(validateZapForPublish({ trigger: webhook, steps: [{ type: "ACTION", config: { url: "" } }] }), /Step 2: Enter the URL/);
 });
 
 test("webhook trigger and custom HTTP step need no account", () => {

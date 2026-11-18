@@ -152,26 +152,16 @@ router.get("/sample/:triggerId", requireAuth, async (req, res) => {
       return res.status(404).json({ error: "Trigger not found" });
     }
 
-    // Find the most recent run for this zap to get sample payload
+    // The most recent event this trigger really received (a webhook request or a polled
+    // item). Manual runs from the Run button carry no real data, so they're skipped.
     const lastRun = await prisma.zapRun.findFirst({
-      where: { zapId: trigger.zapId },
+      where: { zapId: trigger.zapId, NOT: { idempotencyKey: { contains: "-manual-" } } },
       orderBy: { createdAt: "desc" },
+      select: { triggerPayload: true, createdAt: true },
     });
 
-    if (!lastRun) {
-      return res.json({
-        sample: {
-          body: {
-            email: "user@example.com",
-            name: "Alex Smith",
-            message: "Sample webhook payload",
-          },
-        },
-        source: "default",
-      });
-    }
-
-    return res.json({ sample: lastRun.triggerPayload, source: "last_run" });
+    if (!lastRun) return res.json({ sample: null, source: "none" });
+    return res.json({ sample: lastRun.triggerPayload, source: "last_run", receivedAt: lastRun.createdAt });
   } catch (err) {
     console.error("[test-step] Error fetching sample:", err.message);
     return res.status(500).json({ error: "Failed to fetch sample data" });

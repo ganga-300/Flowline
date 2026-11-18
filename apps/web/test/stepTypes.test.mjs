@@ -11,11 +11,12 @@ const registry = {
 test("new steps start unconfigured with sensible defaults", () => {
   assert.deepEqual(createStep("DELAY", "s1"), { id: "s1", type: "DELAY", name: "Delay", config: { seconds: 30 }, isConfigured: false });
   assert.deepEqual(createStep("FILTER", "s2").config, { path: "", operator: "EQUALS", value: "" });
-  assert.equal(createStep("ACTION", "s3").name, "Choose an app");
+  assert.equal(createStep("ACTION", "s3").name, "", "named after the action once one is picked");
 });
 
 test("trigger card: placeholder until configured, then event and detail", () => {
-  assert.equal(describeTriggerCard({ config: { provider: "webhook" }, isConfigured: false }).title, "Choose a trigger");
+  assert.equal(describeTriggerCard({ config: {}, isConfigured: false }).title, "Choose a trigger", "no app picked yet");
+  assert.equal(describeTriggerCard({ config: { provider: "webhook", event: "catch_hook" } }).title, "Catch Webhook Event");
   assert.deepEqual(
     describeTriggerCard({ config: { provider: "github", event: "new_issue", repo: "octo/demo" }, isConfigured: true }),
     { app: "github", title: "New Issue Created", summary: "GitHub · octo/demo" }

@@ -23,7 +23,7 @@ export const FILTER_OPERATORS = [
 ];
 
 const DEFAULTS = {
-  ACTION: { name: "Choose an app", config: {} },
+  ACTION: { name: "", config: {} }, // named after the action once one is picked
   AI: { name: "AI prompt", config: { prompt: "" } },
   FILTER: { name: "Filter", config: { path: "", operator: "EQUALS", value: "" } },
   DELAY: { name: "Delay", config: { seconds: 30 } },
@@ -57,10 +57,11 @@ export function getTriggerProviderOrDefault(providerId) {
 
 /** { app, title, summary } for the trigger card. */
 export function describeTriggerCard(trigger) {
-  const provider = getTriggerProviderOrDefault(trigger?.config?.provider);
-  if (!trigger?.isConfigured) {
+  // No app picked yet (a new Zap starts this way, so nothing is chosen for the user).
+  if (!trigger?.config?.provider) {
     return { app: null, title: "Choose a trigger", summary: "Pick the app and event that start this Zap" };
   }
+  const provider = getTriggerProviderOrDefault(trigger.config.provider);
   const event = provider.events.find((e) => e.id === trigger.config?.event);
   const detail =
     provider.id === "github" ? trigger.config?.repo :
@@ -89,8 +90,8 @@ export function describeStepCard(step, registry = {}) {
         summary: step.isConfigured ? app?.name || config.provider : `${app?.name || config.provider} · needs setup`,
       };
     }
-    if (config.url) {
-      return { app: null, title: "HTTP request", summary: `${config.method || "POST"} ${truncate(config.url, 40)}` };
+    if (config.url !== undefined) {
+      return { app: null, title: step.name || "HTTP request", summary: config.url ? `${config.method || "POST"} ${truncate(config.url, 40)}` : "Enter the URL to call" };
     }
     return { app: null, title: "Choose an app", summary: "Pick the app and what it should do" };
   }

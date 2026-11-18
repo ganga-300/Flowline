@@ -10,7 +10,8 @@ import { ConnectionSelector } from "./ConnectionSelector";
 
 /** App + action + account + the action's fields, for an ACTION step. */
 export function ActionIntegrationSelector({ config, sampleData = {}, steps = [], onChange }) {
-  const selectedProvider = config?.provider || "custom_http";
+  // No provider and no url = nothing picked yet (a new step); no provider + url = HTTP request.
+  const selectedProvider = config?.provider || (config?.url !== undefined ? "custom_http" : null);
   const selectedAction = config?.action || "";
   const connectionId = config?.connectionId || null;
   const actionValues = config?.config || {};
@@ -61,7 +62,7 @@ export function ActionIntegrationSelector({ config, sampleData = {}, steps = [],
         </div>
       </div>
 
-      {selectedProvider !== "custom_http" && (
+      {selectedProvider && selectedProvider !== "custom_http" && (
         <>
           <Field label="Action">
             <Select
