@@ -21,6 +21,17 @@ router.get("/", requireAuth, async (req, res) => {
   }
 });
 
+// GET /alerts/count - alerts not dismissed yet, for the badge on the Alerts nav item.
+router.get("/count", requireAuth, async (req, res) => {
+  try {
+    const count = await prisma.alert.count({ where: { userId: req.userId } });
+    res.json({ count });
+  } catch (err) {
+    console.error("[alerts] Error counting alerts:", err.message);
+    res.status(500).json({ error: "Failed to count alerts" });
+  }
+});
+
 // DELETE /alerts/:id - Dismiss an alert
 router.delete("/:id", requireAuth, async (req, res) => {
   try {

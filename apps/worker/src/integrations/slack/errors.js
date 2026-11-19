@@ -8,11 +8,13 @@ function describeSlackError(code) {
     case "is_archived":
       return "This Slack channel is archived (is_archived).";
     case "invalid_auth":
+    case "not_authed":
     case "token_revoked":
+    case "token_expired":
     case "account_inactive":
-      return `Slack authorization failed (${code}). Please reconnect Slack in the Connections tab.`;
+      return `Slack no longer accepts this connection (${code}). Reconnect Slack on the Apps page.`;
     case "missing_scope":
-      return "Slack connection is missing a permission (missing_scope). Please reconnect Slack in the Connections tab.";
+      return "Slack connection is missing a permission (missing_scope). Reconnect Slack on the Apps page.";
     case "ratelimited":
       return "Slack rate limit reached (ratelimited).";
     case "no_text":

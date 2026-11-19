@@ -3,6 +3,33 @@ const { fetchWithTimeout } = require("../../../worker/src/fetchWithTimeout");
 const router = express.Router();
 const prisma = require("../prismaClient");
 const requireAuth = require("../middleware/auth");
+const { refreshGoogleAccessToken } = require("../../../worker/src/integrations/google/refreshToken");
+const { SLACK_AUTH_CODES, isAuthFailure } = require("../../../worker/src/authFailure");
+
+// The app rejected the account's token: flag it like the worker does, so the Apps page
+// shows "Reconnect" (reconnecting through OAuth clears it).
+async function markNeedsReconnect(connectionId, message) {
+  try {
+    // Like the worker: only the first failure is recorded (keeps "since <date>").
+    await prisma.connection.updateMany({
+      where: { id: connectionId, status: { not: "NEEDS_RECONNECT" } },
+      data: { status: "NEEDS_RECONNECT", lastError: String(message).slice(0, 500), lastErrorAt: new Date() },
+    });
+  } catch (err) {
+    console.error(`[options] could not mark connection ${connectionId} as broken:`, err.message);
+  }
+}
+
+/** GET a Gmail API URL with the connection's token, refreshing it once on 401 (it lasts ~1 hour). */
+async function gmailGet(connection, url) {
+  const send = (token) => fetchWithTimeout(url, { headers: { Authorization: `Bearer ${token}` } });
+  let res = await send(connection.accessToken);
+  if (res.status === 401 && connection.refreshToken) {
+    const fresh = await refreshGoogleAccessToken(connection.id, connection.refreshToken, { db: prisma });
+    res = await send(fresh);
+  }
+  return res;
+}
 
 /**
  * GET /connections/:id/options?type=slack_channels|slack_users|gmail_labels|github_repos
@@ -34,6 +61,7 @@ router.get("/:id/options", requireAuth, async (req, res) => {
         const options = data.channels.map((c) => ({ label: `#${c.name}`, value: c.id }));
         return res.json({ options });
       }
+      if (SLACK_AUTH_CODES.has(data.error)) await markNeedsReconnect(connection.id, `Slack rejected this connection (${data.error}).`);
       return fail(`Could not load Slack channels (${data.error || `HTTP ${slackRes.status}`}). Try reconnecting Slack.`);
     }
 
@@ -51,18 +79,25 @@ router.get("/:id/options", requireAuth, async (req, res) => {
           }));
         return res.json({ options });
       }
+      if (SLACK_AUTH_CODES.has(data.error)) await markNeedsReconnect(connection.id, `Slack rejected this connection (${data.error}).`);
       return fail(`Could not load Slack users (${data.error || `HTTP ${slackRes.status}`}). Try reconnecting Slack.`);
     }
 
     if (type === "gmail_labels") {
-      const gmailRes = await fetchWithTimeout("https://gmail.googleapis.com/gmail/v1/users/me/labels", {
-        headers: { Authorization: `Bearer ${connection.accessToken}` },
-      });
+      let gmailRes;
+      try {
+        gmailRes = await gmailGet(connection, "https://gmail.googleapis.com/gmail/v1/users/me/labels");
+      } catch (err) {
+        if (!isAuthFailure(err)) throw err;
+        await markNeedsReconnect(connection.id, err.message);
+        return fail(err.message);
+      }
       const data = await gmailRes.json().catch(() => ({}));
       if (gmailRes.ok && Array.isArray(data.labels)) {
         const options = data.labels.map((l) => ({ label: l.name, value: l.id }));
         return res.json({ options });
       }
+      if (gmailRes.status === 401) await markNeedsReconnect(connection.id, "Google rejected this Gmail connection (401).");
       return fail(`Could not load Gmail labels (HTTP ${gmailRes.status}). Try reconnecting Gmail.`);
     }
 
@@ -78,6 +113,7 @@ router.get("/:id/options", requireAuth, async (req, res) => {
         const options = data.map((r) => ({ label: r.full_name, value: r.full_name }));
         return res.json({ options });
       }
+      if (reposRes.status === 401) await markNeedsReconnect(connection.id, "GitHub rejected this connection (401 Bad credentials).");
       return fail(`Could not load GitHub repositories (HTTP ${reposRes.status}). Try reconnecting GitHub.`);
     }
 

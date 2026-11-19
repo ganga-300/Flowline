@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpRight, Play, Plus, RefreshCw, Unplug, X, Zap } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Play, Plus, RefreshCw, Unplug, X, Zap } from "lucide-react";
 import { Badge, Button } from "@/components/ui";
 import { AppGlyph } from "./AppGlyph";
-import { CONNECT_HINTS, accountLabel, connectedLabel, connectedOn, usageText } from "./appsDirectory";
+import { CONNECT_HINTS, accountLabel, brokenCount, connectedLabel, connectedOn, needsReconnect, reconnectMessage, usageText } from "./appsDirectory";
 
 function Section({ title, count, children }) {
   return (
@@ -42,8 +42,9 @@ function EventList({ items, icon: Icon, empty }) {
 function AccountRow({ app, conn, isNew, onReconnect, onDisconnect }) {
   const label = accountLabel(app.id, conn) || "Account";
   const usage = usageText(conn.usedBy);
+  const broken = needsReconnect(conn);
   return (
-    <li className="rounded-control border border-line bg-surface p-3.5">
+    <li className={broken ? "rounded-control border border-warning/40 bg-warning-soft/40 p-3.5" : "rounded-control border border-line bg-surface p-3.5"}>
       <div className="flex items-start gap-3">
         <span aria-hidden="true" className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-subtle text-xs font-semibold uppercase text-ink-muted">
           {label.replace(/^@/, "").charAt(0)}
@@ -52,6 +53,7 @@ function AccountRow({ app, conn, isNew, onReconnect, onDisconnect }) {
           <div className="flex items-center gap-2">
             <p className="truncate text-sm font-medium text-ink">{label}</p>
             {isNew && <Badge tone="primary">New</Badge>}
+            {broken && <Badge tone="warning" dot className="shrink-0">Reconnect needed</Badge>}
           </div>
           <p className="text-xs text-ink-faint">
             Connected {connectedOn(conn.createdAt)}
@@ -59,6 +61,16 @@ function AccountRow({ app, conn, isNew, onReconnect, onDisconnect }) {
           </p>
         </div>
       </div>
+
+      {broken && (
+        <div className="mt-3 flex gap-2 pl-11 text-sm text-ink">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
+          <div className="min-w-0">
+            <p>{reconnectMessage(app.name, conn)}</p>
+            {conn.lastError && <p className="mt-0.5 break-words text-xs text-ink-muted">Details: {conn.lastError}</p>}
+          </div>
+        </div>
+      )}
 
       {conn.usedBy?.length > 0 && (
         <ul className="mt-3 flex flex-wrap gap-1.5 pl-11" aria-label={`Zaps using ${label}`}>
@@ -77,7 +89,7 @@ function AccountRow({ app, conn, isNew, onReconnect, onDisconnect }) {
       )}
 
       <div className="mt-3 flex gap-2 pl-11">
-        <Button size="sm" variant="outline" leftIcon={<RefreshCw className="size-3.5" />} onClick={() => onReconnect(app.id)} title={`Sign in to ${app.name} again`}>
+        <Button size="sm" variant={broken ? "primary" : "outline"} leftIcon={<RefreshCw className="size-3.5" />} onClick={() => onReconnect(app.id)} title={`Sign in to ${app.name} again`}>
           Reconnect
         </Button>
         <Button size="sm" variant="ghost" leftIcon={<Unplug className="size-3.5" />} onClick={() => onDisconnect(app, conn)} aria-label={`Disconnect ${label}`}>
@@ -101,6 +113,8 @@ export function AppDetail({ app, accounts, titleId, newConnectionId, onClose, on
           <div className="mt-2.5">
             {!isOAuth ? (
               <Badge tone="neutral">Built in · no account needed</Badge>
+            ) : brokenCount(accounts) > 0 ? (
+              <Badge tone="warning" dot>{accounts.length > 1 ? `${brokenCount(accounts)} of ${accounts.length} need reconnecting` : "Reconnect needed"}</Badge>
             ) : accounts.length > 0 ? (
               <Badge tone="success" dot>{connectedLabel(accounts.length)}</Badge>
             ) : (

@@ -40,7 +40,7 @@ async function run() {
 beforeEach(() => {
   queued.length = 0;
   state = {
-    zap: { id: "zap_1", userId: "u1", trigger: { id: "t1", type: "POLLING", config: { provider: "github", event: "new_issue" } } },
+    zap: { id: "zap_1", userId: "u1", status: "ENABLED", trigger: { id: "t1", type: "POLLING", config: { provider: "github", event: "new_issue" } } },
     trigger: { id: "t1", lastPollHash: "101", config: { provider: "github", event: "new_issue" } },
     runs: [{ id: "old_run" }],
     poll: async () => {},
@@ -98,4 +98,22 @@ test("webhook Zaps still run immediately with the given payload", async () => {
   assert.equal(out.status, 202);
   assert.equal(queued.length, 1);
   assert.deepEqual(state.runs.at(-1).triggerPayload, { triggeredBy: "user_click" });
+});
+
+test("a Zap that is turned off isn't run (its run would only be cancelled)", async () => {
+  state.zap.status = "DISABLED";
+  let polled = false;
+  state.poll = async () => { polled = true; };
+  const out = await run();
+  assert.equal(out.status, 409);
+  assert.match(out.body.error, /turned off/);
+  assert.equal(polled, false);
+  assert.equal(queued.length, 0);
+});
+
+test("a rejected account is reported with what to do, not as 'no new issues'", async () => {
+  state.poll = async () => { throw Object.assign(new Error("GitHub request failed (401): Bad credentials"), { status: 401 }); };
+  const out = await run();
+  assert.equal(out.status, 502);
+  assert.match(out.body.error, /Could not check GitHub.*401/);
 });

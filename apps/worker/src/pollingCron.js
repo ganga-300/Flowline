@@ -14,7 +14,9 @@ const {
 } = require("./integrations/triggerPayloads");
 const { fetchChannelHistory, fetchChannelHistorySince } = require("./integrations/slack/channelHistory");
 const { createSlackNameResolver } = require("./integrations/slack/names");
+const { slackSelfIdentity, isOwnSlackMessage } = require("./integrations/slack/identity");
 const { createAndQueueRun } = require("./runQueue");
+const { isAuthFailure, markConnectionBroken, markConnectionHealthy } = require("./connectionHealth");
 
 const connection = new IORedis(redisUrl(), {
   maxRetriesPerRequest: null,
@@ -31,13 +33,47 @@ async function advanceMarker(trigger, marker) {
   await prisma.trigger.update({ where: { id: trigger.id }, data: { lastPollHash: marker } });
 }
 
+// Returned by a poll that logged a failure and kept its checkpoint (retried next poll).
+const POLL_SKIPPED = Symbol("poll skipped");
+
+/**
+ * For failures a poll can wait out (rate limit, outage, backlog): log, keep the checkpoint.
+ * The app rejecting the account's token is not one of them - it never fixes itself - so
+ * that is thrown: the account is marked "needs reconnect" (see trackConnectionHealth) and
+ * a manual Run reports it.
+ */
+function skipPoll(label, trigger, err) {
+  if (isAuthFailure(err)) throw err;
+  console.warn(`[polling] ${label} trigger ${trigger.id}: ${err.message}; will retry next poll`);
+  return POLL_SKIPPED;
+}
+
+/**
+ * Wraps a poller: an auth failure marks the trigger's account "NEEDS_RECONNECT" (and is
+ * rethrown); a poll that read the app successfully marks it healthy again.
+ */
+function trackConnectionHealth(poll) {
+  return async (trigger) => {
+    let result;
+    try {
+      result = await poll(trigger);
+    } catch (err) {
+      if (trigger.connection?.id && isAuthFailure(err)) await markConnectionBroken(trigger.connection.id, err);
+      throw err;
+    }
+    if (result !== POLL_SKIPPED) await markConnectionHealthy(trigger.connection);
+    return result;
+  };
+}
+
 /**
  * Polling handler for GitHub triggers (new_issue, new_push).
  * HTTP failures (rate limit, 404, 5xx) are logged and the checkpoint stays, as before; a
  * backlog too long to read in one poll is logged the same way. Network errors/timeouts and
  * database/queue failures are thrown (the cycle logs them; manual Run reports them).
  */
-async function pollGitHubTrigger(trigger) {
+const pollGitHubTrigger = trackConnectionHealth(pollGitHub);
+async function pollGitHub(trigger) {
   const repo = trigger.config?.repo || trigger.config?.repository;
   if (!repo) {
     console.log(`[polling] GitHub trigger ${trigger.id} has no repository configured, skipping`);
@@ -56,7 +92,7 @@ async function pollGitHubTrigger(trigger) {
     }
   } catch (err) {
     if (!err.status && !err.backlog) throw err;
-    console.warn(`[polling] GitHub trigger ${trigger.id} (${cleanRepo}): ${err.message}; will retry next poll`);
+    return skipPoll(`GitHub (${cleanRepo})`, trigger, err);
   }
 }
 
@@ -364,13 +400,24 @@ const gmailCheckpoint = (historyId, ms) => `${historyId}:${Math.floor(ms / 1000)
  * saved and queued; on any failure it stays, and the next poll redoes the same range
  * (createAndQueueRun dedupes emails that already have a run).
  */
-async function pollGmailTrigger(trigger) {
+/**
+ * The search for emails received after `sinceSeconds`, within the user's own search (if
+ * any). An empty search means every new email in the inbox's history.
+ */
+function gmailSearchSince(query, sinceSeconds) {
+  const q = String(query || "").trim();
+  return q ? `(${q}) after:${sinceSeconds}` : `after:${sinceSeconds}`;
+}
+
+const pollGmailTrigger = trackConnectionHealth(pollGmail);
+async function pollGmail(trigger) {
   if (!trigger.connection) {
     console.log(`[polling] Gmail trigger ${trigger.id} has no connected account, skipping`);
-    return;
+    return POLL_SKIPPED;
   }
 
-  const query = trigger.config?.query || trigger.config?.q || "is:unread";
+  // No default search: "is:unread" would miss every email read before the next check.
+  const query = trigger.config?.query || trigger.config?.q || "";
   const gmail = createGmailClient(trigger.connection);
   const startedAt = Date.now();
 
@@ -399,7 +446,7 @@ async function pollGmailTrigger(trigger) {
       if (added.messageIds.length > 0) {
         // History has every added message (sent mail, drafts, spam...). Keep only those the
         // user's search matches - the same filter the trigger always used.
-        const matching = new Set(await listMessageIds(gmail, `(${query}) after:${checkpoint.seconds - GMAIL_SEARCH_MARGIN_SEC}`));
+        const matching = new Set(await listMessageIds(gmail, gmailSearchSince(query, checkpoint.seconds - GMAIL_SEARCH_MARGIN_SEC)));
         await queueGmailRuns(trigger, gmail, added.messageIds.filter((id) => matching.has(id)));
       }
       if (added.historyId !== checkpoint.historyId) {
@@ -423,9 +470,9 @@ async function pollGmailTrigger(trigger) {
     }
     await catchUpGmailBySearch(trigger, gmail, query, Math.floor(Number(legacy.internalDate) / 1000) - 60, startedAt);
   } catch (err) {
-    // API, token, database or queue failure: the checkpoint is unchanged, so the next poll
-    // retries the same range.
-    console.warn(`[polling] Gmail trigger ${trigger.id}: ${err.message}; will retry next poll`);
+    // API, database or queue failure: the checkpoint is unchanged, so the next poll
+    // retries the same range. (A rejected token is thrown, see skipPoll.)
+    return skipPoll("Gmail", trigger, err);
   }
 }
 
@@ -436,7 +483,7 @@ async function pollGmailTrigger(trigger) {
  */
 async function catchUpGmailBySearch(trigger, gmail, query, sinceSeconds, startedAt) {
   const historyId = await getCurrentHistoryId(gmail);
-  const ids = await listMessageIds(gmail, `(${query}) after:${sinceSeconds}`);
+  const ids = await listMessageIds(gmail, gmailSearchSince(query, sinceSeconds));
   await queueGmailRuns(trigger, gmail, ids.reverse()); // search is newest first
   await advanceMarker(trigger, gmailCheckpoint(historyId, startedAt));
 }
@@ -465,10 +512,11 @@ async function queueGmailRuns(trigger, gmail, messageIds) {
 /**
  * Polling handler for Slack triggers (new_message)
  */
-async function pollSlackTrigger(trigger) {
+const pollSlackTrigger = trackConnectionHealth(pollSlack);
+async function pollSlack(trigger) {
   if (!trigger.connection) {
     console.log(`[polling] Slack trigger ${trigger.id} has no connected account, skipping`);
-    return;
+    return POLL_SKIPPED;
   }
 
   const accessToken = trigger.connection.accessToken;
@@ -496,8 +544,7 @@ async function pollSlackTrigger(trigger) {
     try {
       latest = await fetchChannelHistory(accessToken, channelId);
     } catch (err) {
-      console.warn(`[polling] Slack trigger ${trigger.id}: ${err.message}`);
-      return;
+      return skipPoll("Slack", trigger, err);
     }
     const newest = latest.map((m) => m.ts).filter(Boolean).sort(compareSlackTs).at(-1);
     const baseline = newest || slackTsFromMs(checkStartedAt - 60_000);
@@ -513,8 +560,7 @@ async function pollSlackTrigger(trigger) {
   try {
     messages = await fetchChannelHistorySince(accessToken, channelId, trigger.lastPollHash);
   } catch (err) {
-    console.warn(`[polling] Slack trigger ${trigger.id}: ${err.message}`);
-    return;
+    return skipPoll("Slack", trigger, err);
   }
 
   // Strictly newer than the marker (Slack's `oldest` is exclusive; this is a safety net),
@@ -526,6 +572,15 @@ async function pollSlackTrigger(trigger) {
   const newer = [...byTs.values()].sort((a, b) => compareSlackTs(a.ts, b.ts));
   if (newer.length === 0) return;
 
+  // Flowline's own messages (a Zap posting into the channel it watches) must not trigger,
+  // or the Zap would run forever. Without knowing who "we" are, don't process anything.
+  let self;
+  try {
+    self = await slackSelfIdentity(accessToken);
+  } catch (err) {
+    return skipPoll("Slack", trigger, err);
+  }
+
   // Oldest first; the marker moves only after each message's run is saved and queued.
   // If saving or queueing fails, this throws and the marker stays on the last message
   // that has a run; createAndQueueRun dedupes anything redone on the next poll.
@@ -533,6 +588,7 @@ async function pollSlackTrigger(trigger) {
   let handledUpTo = trigger.lastPollHash;
   for (const msg of newer) {
     if (msg.type !== "message" || msg.subtype) continue; // joins, edits, bots, ... don't trigger
+    if (isOwnSlackMessage(msg, self)) continue;
     const payload = slackMessagePayload(msg, channelId, {
       userName: await names.userName(msg.user),
       channelName: await names.channelName(channelId),
@@ -743,6 +799,7 @@ module.exports = {
   pollGmailTrigger,
   pollSlackTrigger,
   compareSlackTs,
+  gmailSearchSince,
   pollSingleTrigger,
   startPollingScheduler,
   stopPollingScheduler,

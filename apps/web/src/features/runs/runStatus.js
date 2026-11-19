@@ -8,6 +8,7 @@ export const RUN_FILTERS = [
   { id: "FILTERED", label: "Filtered" },
   { id: "RUNNING", label: "Running" },
   { id: "QUEUED", label: "Queued" },
+  { id: "CANCELLED", label: "Cancelled" },
 ];
 
 const RUN_STATUS = {
@@ -16,6 +17,8 @@ const RUN_STATUS = {
   FILTERED: { tone: "neutral", label: "Filtered out" },
   RUNNING: { tone: "primary", label: "Running" },
   QUEUED: { tone: "neutral", label: "Queued" },
+  // The Zap was turned off before the run started, or while it waited on a Delay.
+  CANCELLED: { tone: "neutral", label: "Cancelled" },
 };
 
 const STEP_STATUS = {
@@ -123,4 +126,12 @@ export function isEmptyPayload(data) {
 /** Retry choices for a run: a failed run can resume from the failed step. */
 export function retryOptions(run) {
   return run?.status === "FAILED" ? ["resume", "all"] : ["all"];
+}
+
+/**
+ * Whether a run gets a Retry button: one that didn't do its job (failed, filtered out,
+ * cancelled). Not a run that succeeded (that would send everything again) or one still going.
+ */
+export function canRetry(run) {
+  return ["FAILED", "FILTERED", "CANCELLED"].includes(run?.status);
 }

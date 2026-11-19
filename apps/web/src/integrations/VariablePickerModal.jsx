@@ -52,8 +52,17 @@ export function VariablePickerModal({ sampleData = {}, steps = [], onSelect, onC
       .map(({ step, i }) => ({ id: step.id, label: stepTabLabel(step, i) })),
   ];
 
+  // Escape closes just this picker. Without stopping it here, the key reaches the step
+  // drawer's window listener, which closes the whole step and discards its edits.
+  const onKeyDown = (e) => {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    e.stopPropagation();
+    onClose?.();
+  };
+
   return (
-    <div className="mt-1 space-y-2.5 rounded-card border border-line bg-surface p-3 shadow-raised">
+    <div onKeyDown={onKeyDown} className="mt-1 space-y-2.5 rounded-card border border-line bg-surface p-3 shadow-raised">
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint" />

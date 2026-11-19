@@ -3,23 +3,15 @@ const { fetchWithTimeout } = require("../../../../worker/src/fetchWithTimeout");
 const { signOAuthState, verifyOAuthState, safeReturnUrl } = require("../../lib/authTokens");
 const router = express.Router();
 const prisma = require("../../prismaClient");
-const requireAuth = require("../../middleware/auth");
 const { allowedOrigins } = require("../../config");
-
-// Helper middleware: support token in query parameter for browser redirects
-const authMiddleware = (req, res, next) => {
-  if (!req.headers.authorization && req.query.token) {
-    req.headers.authorization = `Bearer ${req.query.token}`;
-  }
-  requireAuth(req, res, next);
-};
+const { oauthStartAuth, redirectWithError, notConfiguredMessage } = require("../../lib/oauthStart");
 
 /**
  * GET /connections/gmail/start
  * Initiates the Google OAuth 2.0 flow for Gmail permissions.
  * Expects JWT token in Authorization header or query parameter `token`.
  */
-router.get("/start", authMiddleware, (req, res) => {
+router.get("/start", oauthStartAuth, (req, res) => {
   const userId = req.userId;
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -27,13 +19,8 @@ router.get("/start", authMiddleware, (req, res) => {
   const redirectUri = process.env.GOOGLE_REDIRECT_URI || "http://localhost:4000/connections/gmail/callback";
 
   if (!clientId || !clientSecret) {
-    return res.status(500).json({
-      error: "Google OAuth credentials (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET) are not configured on server",
-      missingEnv: [
-        !clientId && "GOOGLE_CLIENT_ID",
-        !clientSecret && "GOOGLE_CLIENT_SECRET",
-      ].filter(Boolean),
-    });
+    const missing = [!clientId && "GOOGLE_CLIENT_ID", !clientSecret && "GOOGLE_CLIENT_SECRET"].filter(Boolean);
+    return redirectWithError(res, req.query.returnUrl, notConfiguredMessage("Gmail", missing));
   }
 
   // Create signed state token containing userId for CSRF protection and account binding
@@ -151,6 +138,10 @@ router.get("/callback", async (req, res) => {
             accessToken: tokenData.access_token,
             // Google may omit refresh_token on re-consent; keep the stored one in that case.
             ...(tokenData.refresh_token ? { refreshToken: tokenData.refresh_token } : {}),
+            // A fresh token: whatever made the account "needs reconnect" is resolved.
+            status: "OK",
+            lastError: null,
+            lastErrorAt: null,
           },
         })
       : await prisma.connection.create({

@@ -24,8 +24,12 @@ stubModule("bullmq", {
 });
 stubModule("ioredis", class {});
 
-let marker, markerWrites, runs;
+let marker, markerWrites, runs, connectionWrites;
 stubModule(path.join(workerSrc, "prismaClient"), {
+  connection: {
+    update: async ({ where, data }) => { connectionWrites.push({ id: where.id, ...data }); },
+    updateMany: async ({ where, data }) => { connectionWrites.push({ id: where.id, ...data }); return { count: 1 }; },
+  },
   trigger: { update: async ({ data }) => { marker = data.lastPollHash; markerWrites.push(marker); } },
   zapRun: {
     create: async ({ data }) => {
@@ -39,7 +43,7 @@ stubModule(path.join(workerSrc, "prismaClient"), {
 });
 
 // ── Fake Slack channel ──
-let channel, historyCalls, failHistory;
+let channel, historyCalls, failHistory, authTestCalls, authTestResponse;
 const tsCmp = (a, b) => require("../src/pollingCron").compareSlackTs(a, b);
 global.fetch = async (url) => {
   const u = new URL(String(url));
@@ -60,11 +64,16 @@ global.fetch = async (url) => {
     return json({ ok: true, messages: page, has_more: hasMore, response_metadata: { next_cursor: hasMore ? String(start + limit) : "" } });
   }
   if (method === "users.info" || method === "conversations.info") return json({ ok: false, error: "not_needed" });
+  if (method === "auth.test") {
+    authTestCalls += 1;
+    return json(authTestResponse);
+  }
   throw new Error(`Unexpected fetch ${u}`);
 };
 
 const { pollSlackTrigger, compareSlackTs } = require("../src/pollingCron");
 const { MAX_PAGES, PAGE_LIMIT } = require("../src/integrations/slack/channelHistory");
+const { clearSlackIdentityCache, isOwnSlackMessage } = require("../src/integrations/slack/identity");
 
 const ts = (i) => `${1700000000 + i}.000100`;
 const msg = (i, extra = {}) => ({ type: "message", text: `m${i}`, user: "U1", ts: ts(i), ...extra });
@@ -80,6 +89,10 @@ beforeEach(() => {
   channel = [];
   historyCalls = [];
   failHistory = null;
+  connectionWrites = [];
+  authTestCalls = 0;
+  authTestResponse = { ok: true, user_id: "UBOT", bot_id: "BBOT" };
+  clearSlackIdentityCache();
 });
 
 test("more than 10 new messages between polls: every one gets a run, oldest first", async () => {
@@ -247,4 +260,90 @@ test("compareSlackTs orders ts strings exactly (no float rounding)", () => {
   assert.equal(compareSlackTs("1700000000.9", "1700000001.000000"), -1);
   assert.equal(compareSlackTs("1700000000.123456", "1700000000.123456"), 0);
   assert.equal(compareSlackTs("1700000000.1", "1700000000.100000"), 0);
+});
+
+// ── Loop guard: Flowline's own messages never trigger ──
+
+test("messages Flowline posted itself (a Zap posting into the channel it watches) don't run", async () => {
+  marker = ts(0);
+  channel = [
+    msg(1),
+    msg(2, { user: "UBOT", bot_id: "BBOT", app_id: "A1" }), // chat.postMessage with our bot token: no subtype
+    msg(3, { bot_id: "BBOT" }),
+    msg(4, { user: "U2", bot_id: "BOTHER" }), // another app's bot: still a normal message here
+    msg(5),
+  ];
+
+  await pollSlackTrigger(trigger());
+  assert.deepEqual(runTexts(), ["m1", "m4", "m5"]);
+  assert.equal(marker, ts(5), "the checkpoint still moves past our own messages");
+
+  channel.push(msg(6, { user: "UBOT", bot_id: "BBOT" }));
+  await pollSlackTrigger(trigger());
+  assert.equal(runs.length, 3, "no loop");
+  assert.equal(authTestCalls, 1, "auth.test is asked once per token, then cached");
+});
+
+test("if Slack can't say who Flowline is, nothing runs and the checkpoint stays (retried next poll)", async () => {
+  marker = ts(0);
+  channel = [msg(1)];
+  authTestResponse = { ok: false, error: "ratelimited" };
+
+  await pollSlackTrigger(trigger());
+  assert.equal(runs.length, 0);
+  assert.equal(marker, ts(0));
+
+  authTestResponse = { ok: true, user_id: "UBOT", bot_id: "BBOT" };
+  await pollSlackTrigger(trigger());
+  assert.deepEqual(runTexts(), ["m1"], "the failed lookup wasn't cached");
+});
+
+test("isOwnSlackMessage: the bot user id only counts for bot tokens", () => {
+  assert.equal(isOwnSlackMessage({ user: "UBOT" }, { userId: "UBOT", botId: "BBOT" }), true);
+  assert.equal(isOwnSlackMessage({ bot_id: "BBOT" }, { userId: "UBOT", botId: "BBOT" }), true);
+  assert.equal(isOwnSlackMessage({ user: "U1" }, { userId: "UBOT", botId: "BBOT" }), false);
+  // A user token: auth.test's user is a person, whose messages must still run.
+  assert.equal(isOwnSlackMessage({ user: "UME" }, { userId: "UME", botId: null }), false);
+  assert.equal(isOwnSlackMessage({ user: "UBOT" }, null), false);
+});
+
+// ── Connection health ──
+
+const connectedTrigger = (status = "OK") => ({ ...trigger(), connection: { id: "c1", accessToken: "xoxb-fake", status } });
+
+test("a revoked Slack token marks the account 'needs reconnect' and is reported (not just logged)", async () => {
+  marker = ts(0);
+  channel = [msg(1)];
+  failHistory = () => "token_revoked";
+
+  await assert.rejects(pollSlackTrigger(connectedTrigger()), (err) => err.slackError === "token_revoked" && /Reconnect Slack/.test(err.message));
+  assert.equal(connectionWrites.length, 1);
+  assert.equal(connectionWrites[0].id, "c1");
+  assert.equal(connectionWrites[0].status, "NEEDS_RECONNECT");
+  assert.match(connectionWrites[0].lastError, /token_revoked/);
+  assert.equal(marker, ts(0), "checkpoint unchanged");
+});
+
+test("the first check with a revoked token also marks the account", async () => {
+  failHistory = () => "invalid_auth";
+  await assert.rejects(pollSlackTrigger(connectedTrigger()));
+  assert.equal(connectionWrites[0]?.status, "NEEDS_RECONNECT");
+});
+
+test("a rate limit is waited out: the account is not marked", async () => {
+  marker = ts(0);
+  channel = [msg(1)];
+  failHistory = () => "ratelimited";
+  await pollSlackTrigger(connectedTrigger());
+  assert.equal(connectionWrites.length, 0);
+});
+
+test("a successful poll clears 'needs reconnect' (only when it was set)", async () => {
+  marker = ts(0);
+  channel = [msg(1)];
+  await pollSlackTrigger(connectedTrigger("OK"));
+  assert.equal(connectionWrites.length, 0, "no write for a healthy account");
+
+  await pollSlackTrigger(connectedTrigger("NEEDS_RECONNECT"));
+  assert.deepEqual(connectionWrites, [{ id: "c1", status: "OK", lastError: null, lastErrorAt: null }]);
 });

@@ -50,7 +50,13 @@ export function useZapBuilder(zapId) {
   const [askName, setAskName] = useState(false); // "Name your Zap" before the first publish
   const [published, setPublished] = useState(null); // the Zap just created (success dialog)
   const [loadError, setLoadError] = useState(null); // { notFound, message } when editing fails to load
-  const [error, setError] = useState(null);
+  const [error, setErrorMessage] = useState(null);
+  // "connect" when the error came back from connecting an app (OAuth), so it isn't shown as a publish failure.
+  const [errorKind, setErrorKind] = useState(null);
+  const setError = useCallback((message, kind = null) => {
+    setErrorMessage(message);
+    setErrorKind(message ? kind : null);
+  }, []);
   const [notice, setNotice] = useState(null);
   // What was last loaded or published, to tell whether there are unsaved changes.
   const [baseline, setBaseline] = useState(null);
@@ -97,7 +103,7 @@ export function useZapBuilder(zapId) {
       if (connected && connectionIdParam) {
         setNotice(`${PROVIDER_NAMES[connected] || "Account"} connected.`);
       } else if (errorParam) {
-        setError(errorParam);
+        setError(errorParam, "connect");
       }
       if (restored || !zapId) {
         setIsLoadingZap(false);
@@ -133,7 +139,7 @@ export function useZapBuilder(zapId) {
           setRestoreDone(true);
         });
     }
-  }, [zapId]);
+  }, [zapId, setError]);
 
   // Keep the in-progress Zap in sessionStorage so the full-page OAuth redirect
   // started by "Connect account" doesn't wipe it. Starts only after the restore check above.
@@ -152,7 +158,7 @@ export function useZapBuilder(zapId) {
     setError(null);
     setTestResult(null);
     setSampleStatus(null);
-  }, [trigger]);
+  }, [trigger, setError]);
 
   const openStep = useCallback((step) => {
     const copy = copyForDraft(step);
@@ -161,7 +167,7 @@ export function useZapBuilder(zapId) {
     setPanel({ target: "step", stepId: step.id, tab: "setup" });
     setError(null);
     setTestResult(null);
-  }, []);
+  }, [setError]);
 
   const closePanel = useCallback(() => {
     setPanel(null);
@@ -370,7 +376,7 @@ export function useZapBuilder(zapId) {
     } finally {
       setIsPublishing(false);
     }
-  }, [commitDraft, closePanel, zapId, zapName, router]);
+  }, [commitDraft, closePanel, zapId, zapName, router, setError]);
 
   // ── Unsaved changes ──
   const isDirty = useMemo(
@@ -398,7 +404,7 @@ export function useZapBuilder(zapId) {
     restoreSteps: setSteps, // undo a delete
     sampleData, setSampleData, sampleStatus, isFetchingSample, fetchSample,
     testResult, isTesting, testStep,
-    publish, isPublishing, error, setError, notice, setNotice,
+    publish, isPublishing, error, errorKind, setError, notice, setNotice,
     askName, setAskName, published, loadError,
   };
 }

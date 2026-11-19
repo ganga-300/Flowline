@@ -86,3 +86,46 @@ test("missing or invalid URL is a clear error", async () => {
   await assert.rejects(executeHttpRequest({ url: "" }, context, { fetchImpl: fakeFetch(), allowPrivate: true }), /no URL/);
   await assert.rejects(executeHttpRequest({ url: "{{trigger.missing}}/x" }, context, { fetchImpl: fakeFetch(), allowPrivate: true }), /not a valid URL/);
 });
+
+// ── No response at all: say why, not just "fetch failed" ──
+
+const failingFetch = (cause) => async () => {
+  throw Object.assign(new TypeError("fetch failed"), cause && { cause });
+};
+
+test("network errors are explained (DNS, refused, timeout) and keep the URL's query out", async () => {
+  const cases = [
+    [{ code: "ENOTFOUND" }, /host name couldn't be found/],
+    [{ code: "ECONNREFUSED" }, /refused the connection/],
+    [{ code: "UND_ERR_CONNECT_TIMEOUT" }, /connection timed out/],
+    [{ code: "CERT_HAS_EXPIRED" }, /certificate has expired/],
+    [{ code: "EWEIRD" }, /network error EWEIRD/],
+    [{ message: "bad port" }, /this port aren't allowed/],
+  ];
+  for (const [cause, reason] of cases) {
+    await assert.rejects(
+      executeHttpRequest({ url: "https://api.example.com/hook?key=secret", method: "POST" }, context, { fetchImpl: failingFetch(cause), allowPrivate: true }),
+      (err) => {
+        assert.match(err.message, reason);
+        assert.match(err.message, /^HTTP step: POST https:\/\/api\.example\.com\/hook failed: /);
+        assert.doesNotMatch(err.message, /secret|fetch failed/);
+        return true;
+      }
+    );
+  }
+});
+
+test("a timeout says how long Flowline waited", async () => {
+  const timeout = async () => { throw Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" }); };
+  await assert.rejects(
+    executeHttpRequest({ url: "https://slow.example.com/x", method: "GET" }, context, { fetchImpl: timeout, allowPrivate: true }),
+    /no response within 15 seconds/
+  );
+});
+
+test("connection-never-made errors stay retryable after the rewording; a reset connection doesn't", async () => {
+  const refused = await executeHttpRequest({ url: "https://api.example.com/x" }, context, { fetchImpl: failingFetch({ code: "ECONNREFUSED" }), allowPrivate: true }).catch((e) => e);
+  assert.equal(isRetryable(refused), true);
+  const reset = await executeHttpRequest({ url: "https://api.example.com/x" }, context, { fetchImpl: failingFetch({ code: "ECONNRESET" }), allowPrivate: true }).catch((e) => e);
+  assert.equal(isRetryable(reset), false, "the request may have arrived: not re-sent");
+});

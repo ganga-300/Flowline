@@ -6,7 +6,7 @@ import { Badge, Button, Spinner } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { JsonViewer } from "./JsonViewer";
 import { StepTrace } from "./StepTrace";
-import { formatDuration, formatFullTime, formatRelativeTime, runStatusMeta, stepProgress } from "./runStatus";
+import { formatDuration, formatFullTime, formatRelativeTime, runStatusMeta, stepProgress, canRetry } from "./runStatus";
 
 /** One run in the history list. Click to expand the trigger data and step trace. */
 export function RunRow({ run, zapId, expanded, detail, loadingDetail, detailError, highlighted, onToggle, onRetry }) {
@@ -46,10 +46,12 @@ export function RunRow({ run, zapId, expanded, detail, loadingDetail, detailErro
           </span>
         </button>
 
-        <Button size="sm" variant="outline" leftIcon={<RotateCcw className="size-3.5" />} onClick={() => onRetry(run)}>
-          <span className="hidden sm:inline">Retry</span>
-          <span className="sr-only sm:hidden">Retry run</span>
-        </Button>
+        {canRetry(run) && (
+          <Button size="sm" variant="outline" leftIcon={<RotateCcw className="size-3.5" />} onClick={() => onRetry(run)}>
+            <span className="max-sm:hidden">Retry</span>
+            <span className="sr-only sm:hidden">Retry run</span>
+          </Button>
+        )}
         <button
           type="button"
           onClick={onToggle}

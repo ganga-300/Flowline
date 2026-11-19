@@ -3,29 +3,20 @@ const { fetchWithTimeout } = require("../../../../worker/src/fetchWithTimeout");
 const { signOAuthState, verifyOAuthState, safeReturnUrl } = require("../../lib/authTokens");
 const router = express.Router();
 const prisma = require("../../prismaClient");
-const requireAuth = require("../../middleware/auth");
 const { allowedOrigins } = require("../../config");
-
-const authMiddleware = (req, res, next) => {
-  if (!req.headers.authorization && req.query.token) {
-    req.headers.authorization = `Bearer ${req.query.token}`;
-  }
-  requireAuth(req, res, next);
-};
+const { oauthStartAuth, redirectWithError, notConfiguredMessage } = require("../../lib/oauthStart");
 
 /**
  * GET /connections/slack/start
  * Initiates the Slack OAuth 2.0 flow
  */
-router.get("/start", authMiddleware, (req, res) => {
+router.get("/start", oauthStartAuth, (req, res) => {
   const userId = req.userId;
   const clientId = process.env.SLACK_CLIENT_ID;
   const redirectUri = process.env.SLACK_REDIRECT_URI || "http://localhost:4000/connections/slack/callback";
 
   if (!clientId) {
-    return res.status(500).json({
-      error: "SLACK_CLIENT_ID is not configured on server",
-    });
+    return redirectWithError(res, req.query.returnUrl, notConfiguredMessage("Slack", ["SLACK_CLIENT_ID"]));
   }
 
   const stateToken = signOAuthState({ userId, provider: "slack", returnUrl: req.query.returnUrl });
@@ -111,25 +102,29 @@ router.get("/callback", async (req, res) => {
     }
 
     const knownTeamName = tokenData.team?.name || "";
+    const teamId = tokenData.team?.id || null;
     const providerValue = `slack:${knownTeamName || "Workspace"}`;
 
-    // Reconnecting the same workspace refreshes its existing row instead of adding a
-    // duplicate. The "Workspace" placeholder doesn't identify a workspace, so always create then.
-    const existing = knownTeamName
-      ? await prisma.connection.findFirst({
-          where: { userId: req.userId, provider: providerValue },
-          orderBy: { createdAt: "desc" },
-        })
-      : null;
+    const existing = await findExistingWorkspace(req.userId, teamId, knownTeamName && providerValue);
 
     const connection = existing
       ? await prisma.connection.update({
           where: { id: existing.id },
-          data: { accessToken: tokenData.access_token },
+          data: {
+            accessToken: tokenData.access_token,
+            // The workspace may have been renamed since; the team id is what identifies it.
+            ...(knownTeamName && { provider: providerValue }),
+            ...(teamId && { externalId: teamId }),
+            // A fresh token: whatever made the account "needs reconnect" is resolved.
+            status: "OK",
+            lastError: null,
+            lastErrorAt: null,
+          },
         })
       : await prisma.connection.create({
           data: {
             provider: providerValue,
+            externalId: teamId,
             accessToken: tokenData.access_token,
             userId: req.userId,
           },
@@ -141,5 +136,26 @@ router.get("/callback", async (req, res) => {
     return res.redirect(`${frontendAppUrl}${returnUrl}${redirectSep}error=${encodeURIComponent(err.message || "OAuth processing failed")}`);
   }
 });
+
+/**
+ * The user's existing connection to this workspace, so reconnecting refreshes it instead of
+ * adding a duplicate: matched by Slack team id; rows saved before the id was stored are
+ * matched by workspace name (only those without an id - another workspace that happens to
+ * share the name is not this one). The "Workspace" placeholder identifies nothing.
+ */
+async function findExistingWorkspace(userId, teamId, providerValue) {
+  if (teamId) {
+    const byId = await prisma.connection.findFirst({
+      where: { userId, externalId: teamId },
+      orderBy: { createdAt: "desc" },
+    });
+    if (byId) return byId;
+  }
+  if (!providerValue) return null;
+  return prisma.connection.findFirst({
+    where: { userId, provider: providerValue, externalId: null },
+    orderBy: { createdAt: "desc" },
+  });
+}
 
 module.exports = router;

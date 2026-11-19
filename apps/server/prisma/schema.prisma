@@ -44,6 +44,7 @@ enum RunStatus {
   SUCCESS
   FAILED
   FILTERED
+  CANCELLED // the Zap was turned off before this run started (or while it waited on a Delay)
 }
 
 enum StepExecutionStatus {
@@ -64,6 +65,15 @@ model Connection {
 
   accessToken   String
   refreshToken  String?
+
+  // "OK", or "NEEDS_RECONNECT" once the app rejected the token (revoked, expired, app
+  // uninstalled). Set by the worker; reconnecting through OAuth sets it back to "OK".
+  status        String    @default("OK")
+  lastError     String?
+  lastErrorAt   DateTime?
+  // The app's own id for the account where its name can change (Slack: the team id);
+  // `provider` keeps the display name ("slack:<workspace name>").
+  externalId    String?
 
   createdAt     DateTime @default(now())
 

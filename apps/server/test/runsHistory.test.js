@@ -236,13 +236,13 @@ test("a database error is a 500 with an error, never an empty list", async () =>
 test("GET /runs/summary counts per status under the other filters, ignoring status", async () => {
   const out = await call(summary, "alice", { status: "FAILED" });
   assert.equal(out.status, 200);
-  assert.deepEqual(out.body.counts, { ALL: 6, QUEUED: 1, RUNNING: 1, SUCCESS: 2, FAILED: 1, FILTERED: 1 });
+  assert.deepEqual(out.body.counts, { ALL: 6, QUEUED: 1, RUNNING: 1, SUCCESS: 2, FAILED: 1, FILTERED: 1, CANCELLED: 0 });
 
   const z1 = await call(summary, "alice", { zapId: "z_a1", from: minute(3).toISOString() });
-  assert.deepEqual(z1.body.counts, { ALL: 3, QUEUED: 0, RUNNING: 1, SUCCESS: 1, FAILED: 0, FILTERED: 1 });
+  assert.deepEqual(z1.body.counts, { ALL: 3, QUEUED: 0, RUNNING: 1, SUCCESS: 1, FAILED: 0, FILTERED: 1, CANCELLED: 0 });
 
   const bob = await call(summary, "bob");
-  assert.deepEqual(bob.body.counts, { ALL: 1, QUEUED: 0, RUNNING: 0, SUCCESS: 0, FAILED: 1, FILTERED: 0 });
+  assert.deepEqual(bob.body.counts, { ALL: 1, QUEUED: 0, RUNNING: 0, SUCCESS: 0, FAILED: 1, FILTERED: 0, CANCELLED: 0 });
 });
 
 test("GET /runs?ids= refreshes specific runs regardless of the list filters", async () => {

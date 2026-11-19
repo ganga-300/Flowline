@@ -7,7 +7,7 @@ const requireAuth = require("../middleware/auth");
 // Every query is scoped with `zap: { userId }`, so another user's runs never match,
 // even when their Zap or run ids are passed in.
 
-const RUN_STATUSES = ["QUEUED", "RUNNING", "SUCCESS", "FAILED", "FILTERED"];
+const RUN_STATUSES = ["QUEUED", "RUNNING", "SUCCESS", "FAILED", "FILTERED", "CANCELLED"];
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
 const MAX_IDS = 100;

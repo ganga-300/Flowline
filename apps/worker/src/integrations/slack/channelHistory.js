@@ -9,7 +9,7 @@
  *    for polling, so a burst of messages between two checks is never cut off.
  */
 
-const { describeSlackError } = require("./errors");
+const { slackApiError } = require("./errors");
 const { fetchWithTimeout } = require("../../fetchWithTimeout");
 
 const PAGE_LIMIT = 200; // Slack's recommended page size for conversations.history
@@ -25,7 +25,7 @@ async function joinChannel(accessToken, channelId) {
 
   if (!join.ok) {
     if (join.error === "missing_scope") {
-      throw new Error("Flowline isn't in this Slack channel and can't join it yet. Reconnect Slack in the Connections tab to grant the new 'join channels' permission, or /invite the Flowline app to the channel.");
+      throw new Error("Flowline isn't in this Slack channel and can't join it yet. Reconnect Slack on the Apps page to grant the new 'join channels' permission, or /invite the Flowline app to the channel.");
     }
     if (join.error === "method_not_supported_for_channel_type" || join.error === "is_archived") {
       throw new Error("Flowline isn't a member of this private channel. In Slack, open the channel and run /invite @Flowline (your app's name).");
@@ -50,7 +50,7 @@ async function readHistoryPage(accessToken, channelId, params) {
     data = await read();
   }
   if (!data.ok) {
-    throw new Error(describeSlackError(data.error));
+    throw slackApiError(data.error); // carries `slackError`, so auth failures can be told apart
   }
   return data;
 }

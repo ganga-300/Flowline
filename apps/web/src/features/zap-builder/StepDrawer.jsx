@@ -32,7 +32,8 @@ export function StepDrawer({ builder }) {
 
   useEffect(() => {
     if (!panel) return;
-    const onKey = (e) => e.key === "Escape" && closePanel();
+    // defaultPrevented: something inside (the data picker) already handled this Escape.
+    const onKey = (e) => e.key === "Escape" && !e.defaultPrevented && closePanel();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [panel, closePanel]);
@@ -164,7 +165,7 @@ export function StepDrawer({ builder }) {
         )}
 
         <div className="flex-1 overflow-y-auto px-5 py-5">
-          {error && <Alert tone="danger" className="mb-5">{error}</Alert>}
+          {error && <Alert tone="danger" title={builder.errorKind === "connect" ? "Couldn't connect" : undefined} className="mb-5">{error}</Alert>}
           {problem && explainFor === openKey && tab === "setup" && (
             <Alert tone="warning" title="Finish setting up this step first" className="mb-5">{problem.message}</Alert>
           )}

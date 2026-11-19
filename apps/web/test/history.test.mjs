@@ -56,7 +56,8 @@ test("API query: status chip maps to API statuses; summary omits status, cursor 
 });
 
 test("chip counts combine Running and Queued", () => {
-  assert.deepEqual(chipCounts({ ALL: 9, QUEUED: 1, RUNNING: 2, SUCCESS: 3, FAILED: 2, FILTERED: 1 }), { ALL: 9, SUCCESS: 3, FAILED: 2, FILTERED: 1, ACTIVE: 3 });
+  assert.deepEqual(chipCounts({ ALL: 9, QUEUED: 1, RUNNING: 2, SUCCESS: 3, FAILED: 2, FILTERED: 1 }), { ALL: 9, SUCCESS: 3, FAILED: 2, FILTERED: 1, ACTIVE: 3, CANCELLED: 0 });
+  assert.equal(chipCounts({ ALL: 2, CANCELLED: 2 }).CANCELLED, 2);
   assert.equal(chipCounts(null), null);
 });
 
@@ -125,4 +126,9 @@ test("error messages: unreachable server, missing endpoint, server error", () =>
   assert.match(historyErrorMessage(new TypeError("Failed to fetch")), /Can't reach/);
   assert.match(historyErrorMessage(Object.assign(new Error("x"), { status: 404 })), /Restart the Flowline API/);
   assert.equal(historyErrorMessage(new Error("Failed to load run history")), "Failed to load run history");
+});
+
+test("cancelled runs (Zap turned off) have their own filter", () => {
+  assert.equal(normalizeStatus("cancelled"), "CANCELLED");
+  assert.match(buildRunsQuery({ ...DEFAULT_FILTERS, status: "CANCELLED" }), /status=CANCELLED/);
 });

@@ -11,13 +11,14 @@ const chipDot = {
   FAILED: "bg-danger",
   FILTERED: "bg-ink-faint",
   ACTIVE: "bg-primary",
+  CANCELLED: "bg-line-strong",
 };
 
 const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40";
 
 /**
  * Zap History filter bar: status chips with counts, then search, Zap and date range.
- * counts: { ALL, SUCCESS, FAILED, FILTERED, ACTIVE } or null while unknown.
+ * counts: { ALL, SUCCESS, FAILED, FILTERED, ACTIVE, CANCELLED } or null while unknown.
  */
 export function HistoryFilters({ filters, counts, zapOptions, searchText, onSearchText, onChange, onClear, canClear }) {
   return (

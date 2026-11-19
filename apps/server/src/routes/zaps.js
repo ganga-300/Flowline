@@ -8,6 +8,7 @@ const { queueRun } = require("../../../worker/src/runQueue");
 const { validateTrigger } = require("../lib/triggerValidation");
 const { nestedDelayError, stepConfigError } = require("../lib/stepValidation");
 const { planStepTree, saveStepTree } = require("../lib/stepTree");
+const { CONNECTION_SELECT, zapListItem } = require("../lib/zapHealth");
 
 // Every account referenced by the trigger or a step must belong to this user;
 // otherwise a Zap could act through someone else's Gmail/Slack/GitHub.
@@ -30,16 +31,22 @@ function triggerWatchKey(type, config = {}, connectionId = null) {
 }
 
 const ACCOUNT_ERROR = "One or more selected accounts were not found. Please reselect them in the builder.";
+const TURNED_OFF_ERROR = "This Zap is turned off. Turn it on to run it.";
 
-// GET /zaps - list all Zaps, newest first
+// GET /zaps - list all Zaps, newest first. Each has `lastRun` ({ id, status, createdAt,
+// completedAt } or null) and `brokenConnections` (accounts that need reconnecting).
 router.get("/",requireAuth, async (req, res) => {
   const zaps = await prisma.zap.findMany({
     where: { userId: req.userId },
     orderBy: { createdAt: "desc" },
-    include: { trigger: true },
+    include: {
+      trigger: { include: { connection: { select: CONNECTION_SELECT } } },
+      steps: { where: { connectionId: { not: null } }, select: { connection: { select: CONNECTION_SELECT } } },
+      runs: { orderBy: { createdAt: "desc" }, take: 1, select: { id: true, status: true, createdAt: true, completedAt: true } },
+    },
   });
 
-  res.json({ zaps });
+  res.json({ zaps: zaps.map(zapListItem) });
 });
 
 // GET /zaps/:id - one Zap with trigger and step tree
@@ -215,18 +222,26 @@ router.patch("/:id", requireAuth, async (req, res) => {
       return res.status(403).json({ error: "Unauthorized" });
     }
 
-    const zap = await prisma.zap.update({
-      where: { id: req.params.id },
-      data: {
-        ...(name !== undefined && { zapName: name }),
-        ...(status !== undefined && { status }),
-      },
-      include: {
-        trigger: true,
-        steps: {
-          orderBy: { order: "asc" },
+    // Turning a polling Zap back on starts fresh from "now" (the next check sets a new
+    // baseline): it doesn't replay what arrived while it was off, or fail on a backlog.
+    const turningOn = status === "ENABLED" && existingZap.status !== "ENABLED";
+    const zap = await prisma.$transaction(async (tx) => {
+      if (turningOn) {
+        await tx.trigger.updateMany({ where: { zapId: existingZap.id, type: "POLLING" }, data: { lastPollHash: null } });
+      }
+      return tx.zap.update({
+        where: { id: req.params.id },
+        data: {
+          ...(name !== undefined && { zapName: name }),
+          ...(status !== undefined && { status }),
         },
-      },
+        include: {
+          trigger: true,
+          steps: {
+            orderBy: { order: "asc" },
+          },
+        },
+      });
     });
 
     res.json({ zap });
@@ -340,6 +355,10 @@ router.post("/:id/runs/:runId/retry", requireAuth, async (req, res) => {
     if (!previousRun) {
       return res.status(404).json({ error: "Original run not found" });
     }
+    // The worker cancels runs of a Zap that's off, so don't start one that can't run.
+    if (zap.status !== "ENABLED") {
+      return res.status(409).json({ error: TURNED_OFF_ERROR });
+    }
 
     const requested = req.body?.mode;
     if (requested !== undefined && requested !== "resume" && requested !== "all") {
@@ -382,6 +401,10 @@ router.post("/:id/run", requireAuth, async (req, res) => {
 
     if (!zap) {
       return res.status(404).json({ error: "Zap not found" });
+    }
+    // The worker cancels runs of a Zap that's off, so don't start one that can't run.
+    if (zap.status !== "ENABLED") {
+      return res.status(409).json({ error: TURNED_OFF_ERROR });
     }
 
     // Polling triggers (GitHub, Gmail, Slack): check the provider now and report exactly

@@ -21,7 +21,12 @@ function createGitHubClient(accessToken) {
     if (!res.ok) {
       const body = await res.json().catch(() => null);
       const rateLimited = res.status === 403 && res.headers?.get?.("x-ratelimit-remaining") === "0";
-      const err = new Error(`GitHub ${rateLimited ? "API rate limit reached" : `request failed (${res.status})${body?.message ? `: ${body.message}` : ""}`}`);
+      const detail = body?.message ? `: ${body.message}` : "";
+      const err = new Error(
+        rateLimited ? "GitHub API rate limit reached"
+          : res.status === 401 ? `GitHub no longer accepts this connection (401${detail}). Reconnect GitHub on the Apps page.`
+          : `GitHub request failed (${res.status})${detail}`
+      );
       err.status = res.status;
       throw err;
     }

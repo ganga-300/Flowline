@@ -116,7 +116,7 @@ export function ZapBuilder() {
       <main className="flex-1 overflow-x-auto bg-[radial-gradient(var(--color-line)_1px,transparent_1px)] [background-size:20px_20px]">
         <div className="mx-auto flex w-max min-w-full flex-col items-center px-4 pb-40 pt-10 sm:pt-14">
           {error && !panel && (
-            <Alert tone="danger" title={builder.isEditing ? "Couldn't save changes" : "Couldn't publish"} onDismiss={() => setError(null)} className={`mb-6 ${ROOT_WIDTH}`}>
+            <Alert tone="danger" title={builder.errorKind === "connect" ? "Couldn't connect" : builder.isEditing ? "Couldn't save changes" : "Couldn't publish"} onDismiss={() => setError(null)} className={`mb-6 ${ROOT_WIDTH}`}>
               {error}
             </Alert>
           )}

@@ -12,7 +12,9 @@ function stub(file, exports) {
 
 let runs;
 let queued;
+let zapStatus;
 beforeEach(() => {
+  zapStatus = "ENABLED";
   runs = [
     { id: "r_failed", zapId: "z1", status: "FAILED", triggerPayload: { n: 1 } },
     { id: "r_ok", zapId: "z1", status: "SUCCESS", triggerPayload: { n: 2 } },
@@ -20,7 +22,7 @@ beforeEach(() => {
   queued = [];
 });
 stub(path.join(__dirname, "../src/prismaClient.js"), {
-  zap: { findFirst: async ({ where }) => (where.id === "z1" && where.userId === "alice" ? { id: "z1", userId: "alice" } : null) },
+  zap: { findFirst: async ({ where }) => (where.id === "z1" && where.userId === "alice" ? { id: "z1", userId: "alice", status: zapStatus } : null) },
   zapRun: {
     findFirst: async ({ where }) => runs.find((r) => r.id === where.id && r.zapId === where.zapId) || null,
     create: async ({ data }) => { const row = { id: `r_new_${runs.length}`, ...data }; runs.push(row); return row; },
@@ -69,4 +71,12 @@ test("another user's run can't be retried", async () => {
   const res = { statusCode: 200, status(c) { this.statusCode = c; return this; }, json() { return this; } };
   await retry({ params: { id: "z1", runId: "r_failed" }, userId: "bob", body: {} }, res);
   assert.equal(res.statusCode, 404);
+});
+
+test("a Zap that is turned off can't be retried (the run would only be cancelled)", async () => {
+  zapStatus = "DISABLED";
+  const res = await call("r_failed");
+  assert.equal(res.statusCode, 409);
+  assert.match(res.body.error, /turned off/);
+  assert.equal(queued.length, 0);
 });

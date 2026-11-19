@@ -1,16 +1,30 @@
 "use client";
 
-import { ChevronRight, Plus } from "lucide-react";
+import { ChevronRight, Plus, RefreshCw } from "lucide-react";
 import { Badge, Button } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { AppGlyph } from "./AppGlyph";
-import { capabilitySummary, connectedLabel } from "./appsDirectory";
+import { brokenCount, capabilitySummary, connectedLabel } from "./appsDirectory";
 
 const tileFrame = "relative flex flex-col rounded-card border border-line bg-surface shadow-card";
 
-/** Status at the bottom of a tile: connected badge, built-in note, or a Connect button. */
+/** Status at the bottom of a tile: reconnect needed, connected badge, built-in note, or a Connect button. */
 function TileStatus({ app, accounts, onConnect }) {
   if (app.kind === "builtin") return <Badge tone="neutral">Built in · no account needed</Badge>;
+  const broken = brokenCount(accounts);
+  if (broken > 0) {
+    return (
+      <span className="flex min-w-0 flex-wrap items-center gap-2">
+        <Badge tone="warning" dot className="whitespace-nowrap">{accounts.length > 1 ? `${broken} of ${accounts.length} need reconnecting` : "Reconnect needed"}</Badge>
+        {/* Above the tile's full-size click target, like Connect. With several accounts the drawer says which one. */}
+        {accounts.length === 1 && (
+          <Button size="sm" variant="outline" className="relative z-10" leftIcon={<RefreshCw className="size-3.5" />} onClick={() => onConnect(app.id)} aria-label={`Reconnect ${app.name}`}>
+            Reconnect
+          </Button>
+        )}
+      </span>
+    );
+  }
   if (accounts.length > 0) return <Badge tone="success" dot>{connectedLabel(accounts.length)}</Badge>;
   return (
     // Sits above the tile's full-size click target, so it connects instead of opening details.

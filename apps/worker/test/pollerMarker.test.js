@@ -32,6 +32,7 @@ global.fetch = async (url) => {
   const json = (b) => ({ ok: true, status: 200, json: async () => b });
   if (u.includes("conversations.history")) return json({ ok: true, messages: ["3", "2", "1", "0"].map((t) => ({ type: "message", text: t, user: "U1", ts: `100.${t}` })) });
   if (u.includes("users.info") || u.includes("conversations.info")) return json({ ok: false });
+  if (u.includes("auth.test")) return json({ ok: true, user_id: "UBOT", bot_id: "BBOT" });
   throw new Error(`Unexpected fetch ${u}`);
 };
 

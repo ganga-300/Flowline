@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BellOff, RefreshCw } from "lucide-react";
 import { authFetch } from "@/lib/api";
+import { ALERTS_CHANGED } from "@/components/layout/AppShell";
 import { AppShell, PageHeader } from "@/components/layout";
 import { Alert, Button, EmptyState, Toast } from "@/components/ui";
 import { AlertCard, AlertCardSkeleton } from "@/features/alerts/AlertCard";
@@ -60,6 +61,7 @@ export default function AlertsPage() {
         throw new Error(data.error || "Couldn't dismiss the alert");
       }
       setAlerts((prev) => prev.filter((a) => a.id !== alert.id));
+      window.dispatchEvent(new Event(ALERTS_CHANGED)); // the nav badge recounts
     } catch (err) {
       showToast("danger", errorMessage(err, "Couldn't dismiss the alert"));
     } finally {

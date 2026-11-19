@@ -1,13 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Bell, History, LayoutGrid, LogOut, Menu, Plug, Plus, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, Spinner } from "@/components/ui";
 import { useAuthProtection } from "@/lib/useAuthProtection";
+import { authFetch } from "@/lib/api";
 import { Logo } from "./Logo";
+
+// Dispatched on window when alerts are dismissed, so the nav badge recounts right away.
+export const ALERTS_CHANGED = "flowline:alerts-changed";
+const ALERT_POLL_MS = 60_000;
+
+/** Alerts not dismissed yet (GET /alerts/count), refreshed on navigation, every minute and on ALERTS_CHANGED. */
+function useAlertCount(enabled) {
+  const pathname = usePathname();
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+    const load = () =>
+      authFetch("/alerts/count")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => alive && data && setCount(Number(data.count) || 0))
+        .catch(() => {}); // a badge isn't worth an error message
+    load();
+    const timer = setInterval(load, ALERT_POLL_MS);
+    window.addEventListener(ALERTS_CHANGED, load);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      window.removeEventListener(ALERTS_CHANGED, load);
+    };
+  }, [enabled, pathname]);
+  return count;
+}
 
 const NAV = [
   { href: "/dashboard", label: "Zaps", icon: LayoutGrid },
@@ -16,7 +45,7 @@ const NAV = [
   { href: "/alerts", label: "Alerts", icon: Bell },
 ];
 
-function NavLinks({ onNavigate }) {
+function NavLinks({ onNavigate, alertCount = 0 }) {
   const pathname = usePathname();
   return (
     <nav className="space-y-0.5">
@@ -34,6 +63,12 @@ function NavLinks({ onNavigate }) {
           >
             <Icon className="size-4" />
             {label}
+            {href === "/alerts" && alertCount > 0 && (
+              <span className="ml-auto min-w-5 rounded-full bg-danger px-1.5 text-center text-[11px] font-semibold tabular-nums leading-5 text-white">
+                {alertCount > 99 ? "99+" : alertCount}
+                <span className="sr-only"> {alertCount === 1 ? "alert" : "alerts"}</span>
+              </span>
+            )}
           </Link>
         );
       })}
@@ -46,6 +81,7 @@ export function AppShell({ children }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const { isAuthenticated } = useAuthProtection();
+  const alertCount = useAlertCount(isAuthenticated);
 
   const logout = () => {
     localStorage.removeItem("flowline_token");
@@ -58,7 +94,7 @@ export function AppShell({ children }) {
       <Button href="/zaps/new" leftIcon={<Plus className="size-4" />} onClick={() => setOpen(false)}>
         New Zap
       </Button>
-      <NavLinks onNavigate={() => setOpen(false)} />
+      <NavLinks onNavigate={() => setOpen(false)} alertCount={alertCount} />
       <div className="mt-auto border-t border-line pt-3">
         <button type="button" onClick={logout} className="flex w-full items-center gap-2.5 rounded-control px-3 py-2 text-sm font-medium text-ink-muted hover:bg-subtle hover:text-ink cursor-pointer">
           <LogOut className="size-4" />
@@ -82,8 +118,9 @@ export function AppShell({ children }) {
 
       <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-line bg-surface/90 px-4 backdrop-blur lg:hidden">
         <Logo href="/dashboard" />
-        <button type="button" onClick={() => setOpen(true)} aria-label="Open menu" className="rounded-md p-2 text-ink-muted hover:bg-subtle cursor-pointer">
+        <button type="button" onClick={() => setOpen(true)} aria-label={alertCount > 0 ? `Open menu (${alertCount} ${alertCount === 1 ? "alert" : "alerts"})` : "Open menu"} className="relative rounded-md p-2 text-ink-muted hover:bg-subtle cursor-pointer">
           <Menu className="size-5" />
+          {alertCount > 0 && <span aria-hidden="true" className="absolute right-1.5 top-1.5 size-2 rounded-full bg-danger ring-2 ring-surface" />}
         </button>
       </header>
 

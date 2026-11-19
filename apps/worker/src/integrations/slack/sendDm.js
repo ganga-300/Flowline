@@ -53,7 +53,7 @@ async function executeSlackSendDm(step, context) {
       if (lookupData.error === "users_not_found") {
         throw new Error(`No Slack user with the email "${userId}" in this workspace.`);
       }
-      throw new Error(`Could not look up Slack user "${userId}": ${describeSlackError(lookupData.error || "unknown_error")}`);
+      throw Object.assign(new Error(`Could not look up Slack user "${userId}": ${describeSlackError(lookupData.error || "unknown_error")}`), { slackError: lookupData.error });
     }
   }
 
@@ -70,7 +70,7 @@ async function executeSlackSendDm(step, context) {
   const openData = await openRes.json();
   if (!openData.ok || !openData.channel?.id) {
     // Don't fall back to posting somewhere else - report why the DM couldn't be opened.
-    throw new Error(`Could not open a Slack DM: ${describeSlackError(openData.error || "unknown_error")}`);
+    throw Object.assign(new Error(`Could not open a Slack DM: ${describeSlackError(openData.error || "unknown_error")}`), { slackError: openData.error });
   }
   const channelId = openData.channel.id;
 

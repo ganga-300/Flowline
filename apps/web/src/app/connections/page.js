@@ -11,7 +11,7 @@ import { AppDetail } from "@/features/connections/AppDetail";
 import { AppTile, AppTileSkeleton } from "@/features/connections/AppTile";
 import { Drawer } from "@/features/connections/Drawer";
 import {
-  STATUS_FILTERS, accountLabel, buildAppCatalog, disconnectWarning, filterApps, groupConnections, statusCounts,
+  STATUS_FILTERS, accountLabel, buildAppCatalog, disconnectWarning, disconnectedMessage, filterApps, groupConnections, statusCounts,
 } from "@/features/connections/appsDirectory";
 
 const APPS = buildAppCatalog(integrationsList);
@@ -60,7 +60,7 @@ export default function AppsPage() {
 
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 4000);
+    const timer = setTimeout(() => setToast(null), toast.ms || 4000);
     return () => clearTimeout(timer);
   }, [toast]);
 
@@ -113,12 +113,12 @@ export default function AppsPage() {
     setIsDisconnecting(true);
     try {
       const res = await authFetch(`/connections/${disconnectTarget.conn.id}`, { method: "DELETE" });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to disconnect");
-      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to disconnect");
+      const turnedOff = data.disabledZaps || [];
       setConnections((prev) => prev.filter((c) => c.id !== disconnectTarget.conn.id));
-      setToast({ tone: "success", message: `${disconnectTarget.app.name} account disconnected.` });
+      // Longer when it lists Zaps that were turned off: that's something to act on.
+      setToast({ tone: turnedOff.length ? "warning" : "success", message: disconnectedMessage(disconnectTarget.app.name, turnedOff), ms: turnedOff.length ? 10000 : 4000 });
       setDisconnectTarget(null);
     } catch (err) {
       setToast({ tone: "danger", message: err.message || "Failed to disconnect account." });
