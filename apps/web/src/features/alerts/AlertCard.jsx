@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
 import { formatFullTime, formatRelativeTime } from "@/features/runs/runStatus";
 import { alertReason, alertRunHref, isOutcomeUnknownAlert } from "./alertText";
 
-/** One failed-run alert: which Zap, why it failed, a link to the run, and Dismiss. */
+/** One failed-run alert: which Flow, why it failed, a link to the run, and Dismiss. */
 export function AlertCard({ alert, dismissing, onDismiss }) {
   const unknown = isOutcomeUnknownAlert(alert);
   const Icon = unknown ? AlertTriangle : XCircle;
@@ -22,7 +22,7 @@ export function AlertCard({ alert, dismissing, onDismiss }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
             <h3 className="truncate text-sm font-semibold text-ink">
-              {alert.zap?.zapName || "Untitled Zap"}
+              {alert.zap?.zapName || "Untitled Flow"}
               <span className="font-normal text-ink-muted">{unknown ? " · outcome unknown" : " · run failed"}</span>
             </h3>
             <time dateTime={alert.createdAt} title={formatFullTime(alert.createdAt)} className="text-xs text-ink-faint">

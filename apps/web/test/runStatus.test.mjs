@@ -77,7 +77,7 @@ test("steps reused by 'retry from failed step' are labelled, and count as done",
   assert.deepEqual(retryOptions({ status: "SUCCESS" }), ["all"]);
 });
 
-test("a cancelled run (its Zap was turned off) reads as Cancelled, not as a failure", () => {
+test("a cancelled run (its Flow was turned off) reads as Cancelled, not as a failure", () => {
   assert.deepEqual(runStatusMeta({ status: "CANCELLED" }), { tone: "neutral", label: "Cancelled" });
 });
 

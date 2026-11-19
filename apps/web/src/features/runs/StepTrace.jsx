@@ -53,7 +53,7 @@ export function StepTrace({ executions, zapId }) {
                   <Recycle className="mt-0.5 size-4 shrink-0 text-ink-faint" />
                   <span>
                     Done in an{" "}
-                    <Link href={`/zaps/${zapId}/runs?run=${execution.reusedFromRunId}`} className="font-medium text-ink underline underline-offset-2">earlier run</Link>
+                    <Link href={`/flows/${zapId}/runs?run=${execution.reusedFromRunId}`} className="font-medium text-ink underline underline-offset-2">earlier run</Link>
                     , so it wasn&apos;t sent again. Its output was reused.
                   </span>
                 </p>

@@ -2,7 +2,7 @@ import { ArrowDown, CheckCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui";
 import { AppIcon } from "@/components/icons/AppIcon";
 
-// A faithful mock of a real Flowline Zap (GitHub New Issue -> Slack message):
+// A faithful mock of a real Flowline Flow (GitHub New Issue -> Slack message):
 // same trigger/action names, same {{trigger.*}} variables the builder inserts.
 function StepBlock({ app, label, title, detail }) {
   return (

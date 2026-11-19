@@ -41,7 +41,7 @@ test("not auth failures: rate limits, outages, missing permissions, bad input", 
   assert.equal(isAuthFailure(null), false);
 });
 
-test("a step's connection: flat (API-created Zaps), in config, or nested by the builder", () => {
+test("a step's connection: flat (API-created Flows), in config, or nested by the builder", () => {
   assert.equal(stepConnectionId({ connectionId: "a" }), "a");
   assert.equal(stepConnectionId({ config: { connectionId: "b" } }), "b");
   assert.equal(stepConnectionId({ config: { config: { connectionId: "c" } } }), "c");
@@ -85,7 +85,7 @@ test("noteConnectionError only marks auth failures", async () => {
   assert.equal(writes.length, 1);
 });
 
-test("runs of a Zap that is off or deleted are cancelled; CANCELLED counts as finished", () => {
+test("runs of a Flow that is off or deleted are cancelled; CANCELLED counts as finished", () => {
   assert.equal(shouldCancelRun({ status: "ENABLED" }), false);
   assert.equal(shouldCancelRun({ status: "DISABLED" }), true);
   assert.equal(shouldCancelRun(null), true);

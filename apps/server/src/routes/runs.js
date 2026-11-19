@@ -3,9 +3,9 @@ const router = express.Router();
 const prisma = require("../prismaClient");
 const requireAuth = require("../middleware/auth");
 
-// Zap History: runs across all of the signed-in user's Zaps.
+// Flow History: runs across all of the signed-in user's Flows.
 // Every query is scoped with `zap: { userId }`, so another user's runs never match,
-// even when their Zap or run ids are passed in.
+// even when their Flow or run ids are passed in.
 
 const RUN_STATUSES = ["QUEUED", "RUNNING", "SUCCESS", "FAILED", "FILTERED", "CANCELLED"];
 const DEFAULT_LIMIT = 25;

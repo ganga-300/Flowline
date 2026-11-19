@@ -6,7 +6,7 @@ import { SectionHeading } from "./SectionHeading";
 const STATS = [
   { value: "0", label: "duplicate actions", note: "across 1,500 events with 6 deliberate worker crashes" },
   { value: "1,000/s", label: "webhooks accepted", note: "at p95 under 10 ms in load tests" },
-  { value: "195 ms", label: "from webhook to finished run", note: "p95 for a two-step Zap, app APIs simulated" },
+  { value: "195 ms", label: "from webhook to finished run", note: "p95 for a two-step Flow, app APIs simulated" },
 ];
 
 const POINTS = [

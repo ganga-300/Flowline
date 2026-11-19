@@ -13,11 +13,11 @@ export default function Error({ error, reset }) {
   return (
     <StatusPage
       title="Something went wrong"
-      description="This page hit an unexpected error. Your Zaps keep running; try again, or go back to your Zaps."
+      description="This page hit an unexpected error. Your Flows keep running; try again, or go back to your Flows."
       actions={
         <>
           <Button variant="secondary" onClick={() => reset()}>Try again</Button>
-          <Button href="/dashboard">Go to your Zaps</Button>
+          <Button href="/dashboard">Go to your Flows</Button>
         </>
       }
     />

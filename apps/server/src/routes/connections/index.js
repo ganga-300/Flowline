@@ -11,7 +11,7 @@ router.use("/gmail", gmailRouter);
 router.use("/slack", slackRouter);
 router.use("/github", githubRouter);
 
-// Zaps (owned by this user) whose trigger or steps use a connection, for "Used in N Zaps".
+// Flows (owned by this user) whose trigger or steps use a connection, for "Used in N Flows".
 const ownZap = (userId) => ({
   where: { zap: { userId } },
   select: { zap: { select: { id: true, zapName: true, status: true } } },
@@ -28,7 +28,7 @@ function zapsUsing(conn) {
 /**
  * GET /connections
  * Returns a list of safe user connections (filtering out secret tokens),
- * each with `usedBy`: the distinct Zaps that use it.
+ * each with `usedBy`: the distinct Flows that use it.
  */
 router.get("/", requireAuth, async (req, res) => {
   try {
@@ -73,9 +73,9 @@ router.get("/", requireAuth, async (req, res) => {
 /**
  * DELETE /connections/:id
  * Disconnect / remove a saved connection (ownership check enforced).
- * Zaps that use it can't work without it, so the ones that are on are turned off in the
+ * Flows that use it can't work without it, so the ones that are on are turned off in the
  * same transaction (instead of staying "on" and failing every run). Response:
- * { success, disabledZaps: [{ zapId, zapName }] } - the Zaps that were turned off.
+ * { success, disabledZaps: [{ zapId, zapName }] } - the Flows that were turned off.
  */
 router.delete("/:id", requireAuth, async (req, res) => {
   try {

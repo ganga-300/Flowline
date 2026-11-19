@@ -90,7 +90,7 @@ const prisma = {
   },
   trigger: { update: forbidden, create: forbidden },
   step: { deleteMany: forbidden, update: forbidden, create: forbidden },
-  // Valid Zaps are created in a transaction: the Zap, then its steps.
+  // Valid Flows are created in a transaction: the Flow, then its steps.
   $transaction: async (fn) => fn({
     zap: { create: (args) => prisma.zap.create(args), findFirst: async () => ({ id: "z_new" }) },
     step: { create: async ({ data }) => ({ id: "s_new", ...data }) },
@@ -126,7 +126,7 @@ test("POST /zaps rejects an unsupported trigger type", async () => {
   assert.equal(created.length, 0);
 });
 
-test("POST /zaps still creates valid Gmail, Slack, GitHub and webhook Zaps", async () => {
+test("POST /zaps still creates valid Gmail, Slack, GitHub and webhook Flows", async () => {
   for (const trigger of [webhook(), github(), gmail(), slack()]) {
     const out = await call("post", "/", { name: "ok", trigger, steps: [] });
     assert.equal(out.status, 201, JSON.stringify(out.body));
@@ -134,7 +134,7 @@ test("POST /zaps still creates valid Gmail, Slack, GitHub and webhook Zaps", asy
   assert.equal(created.length, 4);
 });
 
-test("PUT /zaps/:id rejects switching a Zap to a generic URL poller before touching the database", async () => {
+test("PUT /zaps/:id rejects switching a Flow to a generic URL poller before touching the database", async () => {
   const out = await call("put", "/:id", { name: "x", trigger: { type: "POLLING", config: { provider: "github", event: "new_issue", repo: "o/r", url: "http://127.0.0.1/" } }, steps: [] }, { id: "z1" });
   assert.equal(out.status, 400);
   assert.match(out.body.error, /trigger.config.url/);

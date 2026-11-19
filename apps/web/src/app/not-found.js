@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui";
 import { StatusPage } from "@/components/layout/StatusPage";
 
-export const metadata = { title: "Page not found - Flowline" };
+export const metadata = { title: "Page not found" };
 
 export default function NotFound() {
   return (
@@ -12,7 +12,7 @@ export default function NotFound() {
       actions={
         <>
           <Button variant="secondary" href="/">Home</Button>
-          <Button href="/dashboard">Go to your Zaps</Button>
+          <Button href="/dashboard">Go to your Flows</Button>
         </>
       }
     />

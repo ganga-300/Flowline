@@ -16,7 +16,7 @@ import { RUN_FILTERS, isActive, runStatusMeta } from "@/features/runs/runStatus"
 const POLL_MS = 4000;
 
 const EMPTY_COPY = {
-  ALL: { title: "No runs yet", description: "When this Zap's trigger fires, or you press Run on the Zaps page, each run shows up here with every step." },
+  ALL: { title: "No runs yet", description: "When this Flow's trigger fires, or you press Run on the Flows page, each run shows up here with every step." },
   SUCCESS: { title: "No successful runs", description: "Runs that finish every step show up here." },
   FAILED: { title: "No failed runs", description: "Nothing has failed. Runs that hit an error show up here with the step that broke." },
   FILTERED: { title: "No filtered runs", description: "Runs stopped by a Filter step show up here." },
@@ -57,7 +57,7 @@ export default function ZapRunsPage({ params }) {
       const res = await authFetch(`/zaps/${zapId}`);
       const data = await res.json().catch(() => ({}));
       if (res.ok) setZap(data.zap);
-      else if (res.status === 404) setLoadError("This Zap doesn't exist or isn't yours.");
+      else if (res.status === 404) setLoadError("This Flow doesn't exist or isn't yours.");
     } catch {
       // The runs request reports connection problems; the header just falls back.
     }
@@ -166,7 +166,7 @@ export default function ZapRunsPage({ params }) {
       <PageHeader
         back={
           <Link href="/dashboard" className="mb-3 inline-flex items-center gap-1.5 text-sm text-ink-muted hover:text-ink">
-            <ArrowLeft className="size-4" /> Zaps
+            <ArrowLeft className="size-4" /> Flows
           </Link>
         }
         title={zap?.zapName || "Run history"}
@@ -177,7 +177,7 @@ export default function ZapRunsPage({ params }) {
               <span>{trigger.appName} · {trigger.event}{trigger.detail && ` · ${trigger.detail}`}</span>
             </span>
           ) : (
-            "Every run of this Zap, newest first."
+            "Every run of this Flow, newest first."
           )
         }
         actions={
@@ -185,7 +185,7 @@ export default function ZapRunsPage({ params }) {
             <Button variant="outline" onClick={() => loadRuns({ quiet: true })} loading={isRefreshing} leftIcon={<RefreshCw className="size-4" />}>
               Refresh
             </Button>
-            <Button variant="secondary" href={`/zaps/${zapId}/edit`} leftIcon={<Pencil className="size-4" />}>Edit Zap</Button>
+            <Button variant="secondary" href={`/flows/${zapId}/edit`} leftIcon={<Pencil className="size-4" />}>Edit Flow</Button>
           </>
         }
       />

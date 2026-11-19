@@ -50,7 +50,7 @@ export const triggerProviders = [
     id: "github",
     name: "GitHub",
     icon: "github",
-    description: "Start a Zap when an issue is opened or code is pushed",
+    description: "Start a Flow when an issue is opened or code is pushed",
     events: [
       {
         id: "new_issue",

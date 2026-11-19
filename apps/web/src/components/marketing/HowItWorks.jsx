@@ -19,7 +19,7 @@ export function HowItWorks() {
       <SectionHeading
         eyebrow="How it works"
         title="Set it up once. It runs on its own."
-        description="A Zap is a trigger and the steps that follow it. No code required."
+        description="A Flow is a trigger and the steps that follow it. No code required."
       />
       <div className="mx-auto mt-14 grid max-w-6xl gap-5 md:grid-cols-3">
         <Step n="1" title="Pick a trigger" description="Choose the app and the event that starts your workflow.">

@@ -12,7 +12,7 @@ test("orders parents before children whatever order they arrive in", () => {
 });
 
 test("rejects unknown parents, duplicate refs, cycles and bad conditions", () => {
-  assert.match(planStepTree([step("a", { parentRef: "x" })]).error, /isn't in this Zap/);
+  assert.match(planStepTree([step("a", { parentRef: "x" })]).error, /isn't in this Flow/);
   assert.match(planStepTree([step("a"), step("a")]).error, /same ref/);
   assert.match(planStepTree([step("a", { parentRef: "b" }), step("b", { parentRef: "a" })]).error, /inside themselves/);
   assert.match(planStepTree([step("a", { branchCondition: "yes" })]).error, /condition must be an object/);

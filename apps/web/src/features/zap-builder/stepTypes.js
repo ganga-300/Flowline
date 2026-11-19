@@ -57,9 +57,9 @@ export function getTriggerProviderOrDefault(providerId) {
 
 /** { app, title, summary } for the trigger card. */
 export function describeTriggerCard(trigger) {
-  // No app picked yet (a new Zap starts this way, so nothing is chosen for the user).
+  // No app picked yet (a new Flow starts this way, so nothing is chosen for the user).
   if (!trigger?.config?.provider) {
-    return { app: null, title: "Choose a trigger", summary: "Pick the app and event that start this Zap" };
+    return { app: null, title: "Choose a trigger", summary: "Pick the app and event that start this Flow" };
   }
   const provider = getTriggerProviderOrDefault(trigger.config.provider);
   const event = provider.events.find((e) => e.id === trigger.config?.event);

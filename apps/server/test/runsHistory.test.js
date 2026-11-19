@@ -1,4 +1,4 @@
-// GET /runs and GET /runs/summary - Zap History across all of a user's Zaps.
+// GET /runs and GET /runs/summary - Flow History across all of a user's Flows.
 // MOCKED: Prisma is an in-memory fake that understands the filters, ordering, take,
 // select and groupBy these routes use; no database or network.
 const { test, beforeEach } = require("node:test");
@@ -21,7 +21,7 @@ function reset() {
     zap: [
       { id: "z_a1", userId: "alice", zapName: "Gmail to Slack" },
       { id: "z_a2", userId: "alice", zapName: "GitHub issues digest" },
-      { id: "z_b", userId: "bob", zapName: "Bob's secret Zap" },
+      { id: "z_b", userId: "bob", zapName: "Bob's secret Flow" },
     ],
     zapRun: [
       { id: "r1", zapId: "z_a1", status: "SUCCESS", createdAt: minute(1), triggerPayload: { big: "payload" } },
@@ -131,7 +131,7 @@ const ids = (out) => out.body.runs.map((r) => r.id);
 
 beforeEach(() => { reset(); queries.length = 0; });
 
-test("lists only the user's runs, newest first, with Zap name and step summaries", async () => {
+test("lists only the user's runs, newest first, with Flow name and step summaries", async () => {
   const out = await call(list, "alice");
   assert.equal(out.status, 200);
   assert.deepEqual(ids(out), ["r6", "r5", "r4", "r3", "r2", "r1"], "createdAt desc, then id desc");
@@ -145,7 +145,7 @@ test("lists only the user's runs, newest first, with Zap name and step summaries
   assert.doesNotMatch(JSON.stringify(out.body), /secret/, "step input is not in the list");
 });
 
-test("another user's Zap id or run ids return nothing of theirs", async () => {
+test("another user's Flow id or run ids return nothing of theirs", async () => {
   assert.deepEqual(ids(await call(list, "alice", { zapId: "z_b" })), []);
   assert.deepEqual(ids(await call(list, "alice", { ids: "rb,r1" })), ["r1"]);
   const counts = (await call(summary, "alice", { zapId: "z_b" })).body.counts;
@@ -153,15 +153,15 @@ test("another user's Zap id or run ids return nothing of theirs", async () => {
   for (const q of queries) assert.deepEqual(q.where.zap.userId, "alice", "every query is scoped to the user");
 });
 
-test("filters by status (one or several), Zap, date range and Zap name", async () => {
+test("filters by status (one or several), Flow, date range and Flow name", async () => {
   assert.deepEqual(ids(await call(list, "alice", { status: "FAILED" })), ["r2"]);
   assert.deepEqual(ids(await call(list, "alice", { status: "running,QUEUED" })), ["r5", "r4"]);
   assert.deepEqual(ids(await call(list, "alice", { status: "ALL" })).length, 6);
   assert.deepEqual(ids(await call(list, "alice", { zapId: "z_a2" })), ["r5", "r2"]);
   assert.deepEqual(ids(await call(list, "alice", { from: minute(3).toISOString(), to: minute(4).toISOString() })), ["r5", "r4", "r3"]);
   assert.deepEqual(ids(await call(list, "alice", { from: minute(5).toISOString() })), ["r6"]);
-  assert.deepEqual(ids(await call(list, "alice", { q: "github" })), ["r5", "r2"], "case-insensitive Zap name search");
-  assert.deepEqual(ids(await call(list, "alice", { q: "secret" })), [], "search never reaches other users' Zaps");
+  assert.deepEqual(ids(await call(list, "alice", { q: "github" })), ["r5", "r2"], "case-insensitive Flow name search");
+  assert.deepEqual(ids(await call(list, "alice", { q: "secret" })), [], "search never reaches other users' Flows");
   assert.deepEqual(ids(await call(list, "alice", { zapId: "z_a1", status: "SUCCESS" })), ["r6", "r1"]);
 });
 

@@ -73,7 +73,7 @@ test("another user's run can't be retried", async () => {
   assert.equal(res.statusCode, 404);
 });
 
-test("a Zap that is turned off can't be retried (the run would only be cancelled)", async () => {
+test("a Flow that is turned off can't be retried (the run would only be cancelled)", async () => {
   zapStatus = "DISABLED";
   const res = await call("r_failed");
   assert.equal(res.statusCode, 409);

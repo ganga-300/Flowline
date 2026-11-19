@@ -5,7 +5,8 @@
  * the builder show.
  */
 const { allowedOrigins } = require("../config");
-const { verifySessionToken, safeReturnUrl } = require("./authTokens");
+const { safeReturnUrl } = require("./authTokens");
+const { sessionUserId } = require("./session");
 
 /** The frontend URL for `returnUrl` (any unsafe value becomes /connections) with query params added. */
 function frontendUrl(returnUrl, params) {
@@ -19,13 +20,14 @@ function redirectWithError(res, returnUrl, message) {
 }
 
 /** Like requireAuth, but the session token may come in ?token= and failures redirect back. */
-function oauthStartAuth(req, res, next) {
+async function oauthStartAuth(req, res, next) {
   const header = req.headers.authorization;
   const token = header?.startsWith("Bearer ") ? header.slice(7) : req.query.token;
   if (!token) return redirectWithError(res, req.query.returnUrl, "Sign in to Flowline first, then connect the app.");
   try {
-    req.userId = verifySessionToken(token).userId;
-  } catch {
+    req.userId = await sessionUserId(token);
+  } catch (err) {
+    if (!err.sessionEnded) return next(err);
     return redirectWithError(res, req.query.returnUrl, "Your Flowline session has expired. Sign in again, then connect the app.");
   }
   next();

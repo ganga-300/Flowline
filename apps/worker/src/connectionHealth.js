@@ -9,11 +9,12 @@
  */
 const prisma = require("./prismaClient");
 const { SLACK_AUTH_CODES, isAuthFailure } = require("./authFailure");
+const { emailReconnectNeeded } = require("./alertEmails");
 
 const NEEDS_RECONNECT = "NEEDS_RECONNECT";
 const MAX_ERROR_LENGTH = 500;
 
-/** The connection id a step acts through (API-created Zaps keep fields flat; the builder nests them). */
+/** The connection id a step acts through (API-created Flows keep fields flat; the builder nests them). */
 function stepConnectionId(step) {
   return step?.connectionId || step?.config?.connectionId || step?.config?.config?.connectionId || null;
 }
@@ -33,7 +34,11 @@ async function markConnectionBroken(connectionId, err) {
         lastErrorAt: new Date(),
       },
     });
-    if (count > 0) console.warn(`[connections] connection ${connectionId} needs reconnecting: ${err?.message || err}`);
+    if (count > 0) {
+      console.warn(`[connections] connection ${connectionId} needs reconnecting: ${err?.message || err}`);
+      // Just became broken: tell the owner by email too (once; later failures change nothing).
+      await emailReconnectNeeded(connectionId);
+    }
   } catch (updateErr) {
     // Deleted meanwhile, or the database is down: the next failure tries again.
     console.error(`[connections] could not mark connection ${connectionId} as broken:`, updateErr.message);

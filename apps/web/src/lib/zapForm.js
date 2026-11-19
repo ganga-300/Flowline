@@ -1,4 +1,4 @@
-// Converts between the builder's state and the API's Zap shape.
+// Converts between the builder's state and the API's Flow shape.
 //   toZapPayload  - builder state -> body for POST /zaps (create) or PUT /zaps/:id (edit)
 //   fromSavedZap  - zap from GET /zaps/:id -> builder state (for editing)
 // Builder step ids ("step-1", ...) are saved as config.ref because later steps reference
@@ -37,7 +37,7 @@ function stepConfigForApi(s) {
 export function toZapPayload({ zapName, trigger, steps }) {
   const triggerConnectionId = trigger.connectionId || trigger.config?.connectionId;
   return {
-    name: (zapName || "").trim() || "Untitled Zap",
+    name: (zapName || "").trim() || "Untitled Flow",
     status: "ENABLED",
     trigger: {
       type: trigger.type,
@@ -95,7 +95,7 @@ export function fromSavedZap(zap) {
     isConfigured: true,
   }));
   return {
-    zapName: zap.zapName || "Untitled Zap",
+    zapName: zap.zapName || "Untitled Flow",
     trigger: {
       // id: used to load the last request a webhook received; never sent back on save.
       ...(t.id && { id: t.id }),

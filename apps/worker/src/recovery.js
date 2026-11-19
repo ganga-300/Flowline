@@ -85,7 +85,7 @@ function planRecovery(steps, executions) {
 
 /**
  * "Retry from failed step": which results of the original run the retry reuses.
- * Steps that succeeded there and still exist in the Zap are copied into the new run as
+ * Steps that succeeded there and still exist in the Flow are copied into the new run as
  * SUCCESS (marked reusedFromRunId) and not sent again; the failed step and everything after
  * it run normally. BRANCH/LOOP are not copied: they are re-evaluated (they send nothing)
  * so their already-succeeded children can be skipped individually.

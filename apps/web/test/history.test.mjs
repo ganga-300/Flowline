@@ -1,4 +1,4 @@
-// Zap History helpers: URL params, API queries, date presets, merging polled runs (pure functions).
+// Flow History helpers: URL params, API queries, date presets, merging polled runs (pure functions).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -10,7 +10,7 @@ import {
 const NOW = new Date(2026, 10, 6, 15, 30).getTime(); // local time: Nov 6 2026, 15:30
 const run = (id, minutesAgo, status = "SUCCESS", extra = {}) => ({
   id, status, createdAt: new Date(NOW - minutesAgo * 60_000).toISOString(), startedAt: null, completedAt: null,
-  zap: { id: "z1", zapName: "Zap" }, stepExecutions: [], ...extra,
+  zap: { id: "z1", zapName: "Flow" }, stepExecutions: [], ...extra,
 });
 const params = (s) => new URLSearchParams(s);
 const query = (url) => Object.fromEntries(new URL(url, "http://x").searchParams);
@@ -128,7 +128,7 @@ test("error messages: unreachable server, missing endpoint, server error", () =>
   assert.equal(historyErrorMessage(new Error("Failed to load run history")), "Failed to load run history");
 });
 
-test("cancelled runs (Zap turned off) have their own filter", () => {
+test("cancelled runs (Flow turned off) have their own filter", () => {
   assert.equal(normalizeStatus("cancelled"), "CANCELLED");
   assert.match(buildRunsQuery({ ...DEFAULT_FILTERS, status: "CANCELLED" }), /status=CANCELLED/);
 });

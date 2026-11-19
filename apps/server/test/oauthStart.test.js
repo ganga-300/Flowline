@@ -11,7 +11,8 @@ process.env.GOOGLE_CLIENT_ID = "google-client";
 process.env.GOOGLE_CLIENT_SECRET = "google-secret";
 
 const prismaPath = require.resolve(path.join(__dirname, "../src/prismaClient"));
-require.cache[prismaPath] = { id: prismaPath, filename: prismaPath, loaded: true, exports: {} };
+// The session check looks the account up (token version); every test user is at version 0.
+require.cache[prismaPath] = { id: prismaPath, filename: prismaPath, loaded: true, exports: { user: { findUnique: async () => ({ tokenVersion: 0 }) } } };
 
 function startUrl(provider) {
   const router = require(`../src/routes/connections/${provider}`);
@@ -54,7 +55,7 @@ test("slack start: requests the permissions the trigger and DM action need", () 
 
 process.env.FRONTEND_URL = process.env.FRONTEND_URL || "http://frontend.test";
 
-function startWith(provider, req) {
+async function startWith(provider, req) {
   const router = require(`../src/routes/connections/${provider}`);
   const stack = router.stack.find((l) => l.route?.path === "/start").route.stack;
   let location = null;
@@ -62,36 +63,36 @@ function startWith(provider, req) {
   const fullReq = { headers: {}, query: {}, ...req };
   // Run the middleware chain: auth, then the handler.
   let i = 0;
-  const next = () => { const layer = stack[i++]; if (layer) layer.handle(fullReq, res, next); };
-  next();
+  const next = async () => { const layer = stack[i++]; if (layer) await layer.handle(fullReq, res, next); };
+  await next();
   return location && new URL(location);
 }
 
-test("start: an expired or missing session goes back to the page with an error", () => {
+test("start: an expired or missing session goes back to the page with an error", async () => {
   for (const provider of ["github", "gmail", "slack"]) {
-    const expired = startWith(provider, { query: { token: "not-a-jwt", returnUrl: "/zaps/new" } });
+    const expired = await startWith(provider, { query: { token: "not-a-jwt", returnUrl: "/zaps/new" } });
     assert.equal(expired.pathname, "/zaps/new");
     assert.match(expired.searchParams.get("error"), /session has expired/);
 
-    const missing = startWith(provider, { query: { returnUrl: "/connections" } });
+    const missing = await startWith(provider, { query: { returnUrl: "/connections" } });
     assert.equal(missing.pathname, "/connections");
     assert.match(missing.searchParams.get("error"), /Sign in/);
   }
 });
 
-test("start: an unsafe returnUrl falls back to the Apps page", () => {
-  const url = startWith("github", { query: { token: "bad", returnUrl: "//evil.example" } });
+test("start: an unsafe returnUrl falls back to the Apps page", async () => {
+  const url = await startWith("github", { query: { token: "bad", returnUrl: "//evil.example" } });
   assert.equal(url.origin, new URL(process.env.FRONTEND_URL.split(",")[0]).origin);
   assert.equal(url.pathname, "/connections");
 });
 
-test("start: a server without the provider's client id says so on the page instead of returning JSON", () => {
+test("start: a server without the provider's client id says so on the page instead of returning JSON", async () => {
   const { signSessionToken } = require("../src/lib/authTokens");
   const token = signSessionToken("user_1");
   const saved = process.env.SLACK_CLIENT_ID;
   delete process.env.SLACK_CLIENT_ID;
   try {
-    const url = startWith("slack", { query: { token, returnUrl: "/zaps/new" } });
+    const url = await startWith("slack", { query: { token, returnUrl: "/zaps/new" } });
     assert.equal(url.pathname, "/zaps/new");
     assert.match(url.searchParams.get("error"), /Connecting Slack isn't set up.*SLACK_CLIENT_ID/);
   } finally {

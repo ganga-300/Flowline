@@ -1,5 +1,5 @@
 // GET /zaps (dashboard list: broken accounts and latest run) and PATCH /zaps/:id turning a
-// polling Zap back on. MOCKED: Prisma (records the queries' effects); no database.
+// polling Flow back on. MOCKED: Prisma (records the queries' effects); no database.
 const { test, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
@@ -53,7 +53,7 @@ test("brokenConnections: distinct accounts needing a reconnect, trigger first", 
   assert.deepEqual(describeConnection("github"), { app: "github", account: "" });
 });
 
-test("GET /zaps: each Zap has its latest run and broken accounts, never tokens or step rows", async () => {
+test("GET /zaps: each Flow has its latest run and broken accounts, never tokens or step rows", async () => {
   db.listRows = [{
     id: "z1", zapName: "Digest", status: "ENABLED",
     trigger: { id: "t1", type: "POLLING", config: {}, connection: { id: "c1", provider: "slack:Acme", status: "NEEDS_RECONNECT", lastError: "token_revoked" } },
@@ -72,13 +72,13 @@ test("GET /zaps: each Zap has its latest run and broken accounts, never tokens o
   assert.equal(lastFindManyArgs.include.runs.take, 1);
 });
 
-test("PATCH: turning a Zap back on resets its polling checkpoint (starts fresh, no replay)", async () => {
+test("PATCH: turning a Flow back on resets its polling checkpoint (starts fresh, no replay)", async () => {
   const out = await call(route("/:id", "patch"), { params: { id: "z1" }, body: { status: "ENABLED" } });
   assert.equal(out.status, 200);
   assert.deepEqual(triggerResets, [{ where: { zapId: "z1", type: "POLLING" }, data: { lastPollHash: null } }]);
 });
 
-test("PATCH: renaming, pausing, or 'enabling' a Zap that's already on keeps the checkpoint", async () => {
+test("PATCH: renaming, pausing, or 'enabling' a Flow that's already on keeps the checkpoint", async () => {
   await call(route("/:id", "patch"), { params: { id: "z2" }, body: { status: "ENABLED" } });
   await call(route("/:id", "patch"), { params: { id: "z2" }, body: { status: "DISABLED" } });
   await call(route("/:id", "patch"), { params: { id: "z1" }, body: { name: "New name" } });

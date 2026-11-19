@@ -59,7 +59,7 @@ test("polling cycle skips legacy URL-polling triggers: no fetch, no run, no mark
   assert.equal(jobs.length, 0);
   assert.deepEqual(triggerUpdates, []);
   assert.equal(warnings.filter((w) => w.includes("unsupported provider")).length, 3);
-  assert.ok(warnings.some((w) => w.includes("t_meta") && w.includes("z1")), "warning names the trigger and Zap");
+  assert.ok(warnings.some((w) => w.includes("t_meta") && w.includes("z1")), "warning names the trigger and Flow");
 });
 
 test("manual run (pollSingleTrigger) of a legacy URL-polling trigger fetches and runs nothing", async () => {

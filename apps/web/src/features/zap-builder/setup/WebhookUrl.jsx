@@ -4,14 +4,14 @@ import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
 
-/** The Zap's webhook URL once it exists (after the first publish). */
+/** The Flow's webhook URL once it exists (after the first publish). */
 export function WebhookUrl({ token }) {
   const [copied, setCopied] = useState(false);
 
   if (!token) {
     return (
       <div className="rounded-control border border-dashed border-line-strong px-3.5 py-3 text-sm text-ink-muted">
-        Publish this Zap to get its webhook URL. It will show here when you edit the Zap.
+        Publish this Flow to get its webhook URL. It will show here when you edit the Flow.
       </div>
     );
   }
@@ -37,7 +37,7 @@ export function WebhookUrl({ token }) {
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      <p className="text-xs text-ink-muted">Keep it private: anyone with this URL can start the Zap.</p>
+      <p className="text-xs text-ink-muted">Keep it private: anyone with this URL can start the Flow.</p>
     </div>
   );
 }

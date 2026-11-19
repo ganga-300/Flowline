@@ -1,4 +1,4 @@
-// Keeps the Zap builder's in-progress draft across the full-page OAuth redirect
+// Keeps the Flow builder's in-progress draft across the full-page OAuth redirect
 // (builder -> provider consent screen -> server callback -> back to /zaps/new).
 // The pure helpers are exported separately so they can be unit-tested without a browser.
 

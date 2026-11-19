@@ -1,9 +1,9 @@
 /**
- * For the dashboard: which connected accounts a Zap uses that need reconnecting, and its
+ * For the dashboard: which connected accounts a Flow uses that need reconnecting, and its
  * latest run. Pure, so it's unit-tested; GET /zaps loads the rows (no tokens).
  */
 
-// Selected with the Zap (never tokens).
+// Selected with the Flow (never tokens).
 const CONNECTION_SELECT = { id: true, provider: true, status: true, lastError: true };
 
 /** "slack:Acme" -> { app: "slack", account: "Acme" } */
@@ -26,7 +26,7 @@ function brokenConnections(zap) {
   return [...seen.values()];
 }
 
-/** The list shape: the Zap with its trigger, latest run and broken accounts (no step rows). */
+/** The list shape: the Flow with its trigger, latest run and broken accounts (no step rows). */
 function zapListItem(zap) {
   const item = { ...zap, lastRun: zap.runs?.[0] || null, brokenConnections: brokenConnections(zap) };
   delete item.steps;

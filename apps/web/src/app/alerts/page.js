@@ -76,7 +76,7 @@ export default function AlertsPage() {
         description={
           alerts.length > 0
             ? `${alerts.length} failed run${alerts.length === 1 ? "" : "s"} to look at. The run history shows exactly which step broke.`
-            : "When a Zap run fails, Flowline tells you here."
+            : "When a Flow run fails, Flowline tells you here."
         }
         actions={
           <Button variant="outline" onClick={() => loadAlerts({ quiet: true })} loading={isRefreshing} leftIcon={<RefreshCw className="size-4" />}>
@@ -98,7 +98,7 @@ export default function AlertsPage() {
         <EmptyState
           icon={<BellOff className="size-5" />}
           title="No alerts"
-          description="None of your Zaps have failed. If a run fails, you'll see which Zap and why, with a link to the run."
+          description="None of your Flows have failed. If a run fails, you'll see which Flow and why, with a link to the run."
         />
       ) : (
         <div className="space-y-3">

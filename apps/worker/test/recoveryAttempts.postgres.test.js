@@ -65,7 +65,7 @@ test("migration: adds recoveryAttempts INTEGER NOT NULL DEFAULT 0, existing runs
 
   // A database that already has runs (as in production).
   await sql.query(`INSERT INTO "User" ("id", "email", "password") VALUES ('u1', 'u1@example.com', 'x')`);
-  await sql.query(`INSERT INTO "Zap" ("id", "zapName", "updatedAt", "userId") VALUES ('z1', 'Follow up', now(), 'u1')`);
+  await sql.query(`INSERT INTO "Flow" ("id", "zapName", "updatedAt", "userId") VALUES ('z1', 'Follow up', now(), 'u1')`);
   await insertRun("existing-running", "RUNNING");
   await insertRun("existing-success", "SUCCESS");
 

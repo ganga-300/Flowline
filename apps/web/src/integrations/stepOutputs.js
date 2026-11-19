@@ -2,7 +2,7 @@
  * Output fields each action step produces, as returned by the worker handlers in
  * apps/worker/src/integrations/<provider>/*.js (a contract test checks they match).
  * Later steps reference them as {{steps.<ref>.output.<key>}}, where <ref> is the
- * builder step id saved into the step's config as `ref` when the Zap is published.
+ * builder step id saved into the step's config as `ref` when the Flow is published.
  */
 export const ACTION_OUTPUTS = {
   "github:create_issue": [

@@ -264,7 +264,7 @@ test("compareSlackTs orders ts strings exactly (no float rounding)", () => {
 
 // ── Loop guard: Flowline's own messages never trigger ──
 
-test("messages Flowline posted itself (a Zap posting into the channel it watches) don't run", async () => {
+test("messages Flowline posted itself (a Flow posting into the channel it watches) don't run", async () => {
   marker = ts(0);
   channel = [
     msg(1),

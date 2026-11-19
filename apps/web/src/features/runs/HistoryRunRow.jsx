@@ -32,7 +32,7 @@ function StepBars({ executions }) {
 }
 
 /**
- * A run on the Zap History page: status, Zap (links to its builder), when, steps and duration.
+ * A run on the Flow History page: status, Flow (links to its builder), when, steps and duration.
  * Click anywhere on the row (or the chevron, for keyboards) to open the step trace.
  */
 export function HistoryRunRow({ run, now, expanded, detail, loadingDetail, detailError, fresh, onToggle, onRetry }) {
@@ -41,7 +41,7 @@ export function HistoryRunRow({ run, now, expanded, detail, loadingDetail, detai
   const counted = (run.stepExecutions || []).filter((e) => e.status !== "SKIPPED");
   const shortProgress = counted.length ? `${counted.filter((e) => e.status === "SUCCESS").length}/${counted.length} steps` : null;
   const zapId = run.zapId || run.zap?.id;
-  const zapName = run.zap?.zapName || "Untitled Zap";
+  const zapName = run.zap?.zapName || "Untitled Flow";
   const panelId = `history-run-${run.id}`;
   const duration = formatDuration(run.startedAt, run.completedAt);
   const when = formatRelativeTime(run.createdAt, now);
@@ -76,13 +76,13 @@ export function HistoryRunRow({ run, now, expanded, detail, loadingDetail, detai
         <span className="min-w-0 flex-1">
           {zapId ? (
             <Link
-              href={`/zaps/${zapId}/edit`}
+              href={`/flows/${zapId}/edit`}
               className="block w-fit max-w-full truncate rounded-sm text-sm font-medium text-ink decoration-ink-faint underline-offset-2 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
               {zapName}
             </Link>
           ) : (
-            <span className="block truncate text-sm font-medium text-ink-muted">Deleted Zap</span>
+            <span className="block truncate text-sm font-medium text-ink-muted">Deleted Flow</span>
           )}
           <span className="mt-1 flex min-w-0 items-center gap-2 text-xs text-ink-faint sm:mt-0.5">
             <span className="shrink-0 sm:hidden">{badge}</span>
@@ -141,11 +141,11 @@ export function HistoryRunRow({ run, now, expanded, detail, loadingDetail, detai
             loadingDetail={loadingDetail}
             detailError={detailError}
             extra={
-              <Detail label="Zap">
+              <Detail label="Flow">
                 {zapId ? (
                   <span className="flex flex-wrap gap-x-3 gap-y-0.5">
-                    <Link href={`/zaps/${zapId}/edit`} className="font-medium text-ink underline underline-offset-2 hover:text-primary">Edit Zap</Link>
-                    <Link href={`/zaps/${zapId}/runs?run=${run.id}`} className="text-ink-muted underline underline-offset-2 hover:text-ink">All its runs</Link>
+                    <Link href={`/flows/${zapId}/edit`} className="font-medium text-ink underline underline-offset-2 hover:text-primary">Edit Flow</Link>
+                    <Link href={`/flows/${zapId}/runs?run=${run.id}`} className="text-ink-muted underline underline-offset-2 hover:text-ink">All its runs</Link>
                   </span>
                 ) : (
                   "Deleted"

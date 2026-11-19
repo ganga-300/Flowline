@@ -1,5 +1,5 @@
 // Pure helpers for the dashboard: accounts that need reconnecting (GET /zaps returns
-// `brokenConnections` per Zap) and each Zap's latest run (`lastRun`). No React here.
+// `brokenConnections` per Flow) and each Flow's latest run (`lastRun`). No React here.
 import { formatRelativeTime, runStatusMeta } from "../runs/runStatus.js";
 
 const APP_NAMES = { github: "GitHub", gmail: "Gmail", slack: "Slack" };
@@ -12,7 +12,7 @@ export function accountName({ app, account }) {
 }
 
 /**
- * Every account that needs reconnecting, once, with the names of the Zaps using it:
+ * Every account that needs reconnecting, once, with the names of the Flows using it:
  * [{ connectionId, app, account, zapNames }], in dashboard order.
  */
 export function accountsNeedingReconnect(zaps = []) {
@@ -20,7 +20,7 @@ export function accountsNeedingReconnect(zaps = []) {
   for (const zap of zaps) {
     for (const c of zap.brokenConnections || []) {
       if (!byId.has(c.connectionId)) byId.set(c.connectionId, { connectionId: c.connectionId, app: c.app, account: c.account, zapNames: [] });
-      byId.get(c.connectionId).zapNames.push(zap.zapName || "Untitled Zap");
+      byId.get(c.connectionId).zapNames.push(zap.zapName || "Untitled Flow");
     }
   }
   return [...byId.values()];
@@ -36,14 +36,14 @@ export function reconnectBanner(accounts = []) {
     ? `${accountName(accounts[0])} needs reconnecting`
     : `${accounts.length} connected accounts need reconnecting`;
   const who = accounts.length === 1 ? `${appName(accounts[0].app)} stopped accepting it` : "The apps stopped accepting them";
-  return { title, body: `${who}, so ${plural(zapCount, "Zap")} can't run until you reconnect.` };
+  return { title, body: `${who}, so ${plural(zapCount, "Flow")} can't run until you reconnect.` };
 }
 
-/** Warning on one Zap's card, or null. */
+/** Warning on one Flow's card, or null. */
 export function zapReconnectWarning(zap) {
   const broken = zap?.brokenConnections || [];
   if (broken.length === 0) return null;
-  return `Reconnect ${broken.map(accountName).join(" and ")}: this Zap can't run until you do.`;
+  return `Reconnect ${broken.map(accountName).join(" and ")}: this Flow can't run until you do.`;
 }
 
 /** The Apps page link that opens the app needing a reconnect. */
@@ -61,7 +61,7 @@ export function lastRunSummary(zap, now = Date.now()) {
     tone: meta.tone,
     label: meta.label,
     when: formatRelativeTime(run.createdAt, now),
-    href: `/zaps/${zap.id}/runs?run=${encodeURIComponent(run.id)}`,
+    href: `/flows/${zap.id}/runs?run=${encodeURIComponent(run.id)}`,
     failing: run.status === "FAILED",
   };
 }

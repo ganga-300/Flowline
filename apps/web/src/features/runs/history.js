@@ -1,4 +1,4 @@
-// Pure helpers for the Zap History page (/history): URL params, API queries, date
+// Pure helpers for the Flow History page (/history): URL params, API queries, date
 // presets, merging polled runs into the list and grouping by day. No React here.
 
 export const PAGE_SIZE = 25;
@@ -205,6 +205,6 @@ export function groupRunsByDay(runs, now = Date.now()) {
 /** Message for a failed history request. A 404 means the API predates /runs. */
 export function historyErrorMessage(err) {
   if (err instanceof TypeError) return "Can't reach the Flowline server right now.";
-  if (err?.status === 404) return "Zap History isn't available on this server yet. Restart the Flowline API to enable it.";
+  if (err?.status === 404) return "Flow History isn't available on this server yet. Restart the Flowline API to enable it.";
   return err?.message || "Couldn't load run history.";
 }

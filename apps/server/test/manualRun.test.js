@@ -1,6 +1,6 @@
-// "Run" button (POST /zaps/:id/run) for polling Zaps.
+// "Run" button (POST /zaps/:id/run) for polling Flows.
 // MOCKED: Prisma, the BullMQ queue and the poller - proves what the route reports
-// and that it never runs a polling Zap with fake trigger data. NOT a live poll.
+// and that it never runs a polling Flow with fake trigger data. NOT a live poll.
 const { test, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
@@ -66,7 +66,7 @@ test("nothing new: says so and runs nothing", async () => {
   assert.equal(state.runs.length, 1, "no fake manual run created");
 });
 
-test("first check on a new Zap: explains it only set the starting point", async () => {
+test("first check on a new Flow: explains it only set the starting point", async () => {
   state.trigger.lastPollHash = null;
   state.poll = async () => { state.trigger.lastPollHash = "202"; };
   const out = await run();
@@ -83,7 +83,7 @@ test("provider could not be read: reports it instead of claiming success", async
   assert.match(out.body.message, /[Cc]ouldn't read/);
 });
 
-test("poller throws: returns an error and never runs the Zap with fake trigger data", async () => {
+test("poller throws: returns an error and never runs the Flow with fake trigger data", async () => {
   state.poll = async () => { throw new Error("boom"); };
   const out = await run();
   assert.equal(out.status, 502);
@@ -92,7 +92,7 @@ test("poller throws: returns an error and never runs the Zap with fake trigger d
   assert.equal(state.runs.length, 1);
 });
 
-test("webhook Zaps still run immediately with the given payload", async () => {
+test("webhook Flows still run immediately with the given payload", async () => {
   state.zap.trigger = { id: "t1", type: "WEBHOOK", config: { provider: "webhook" } };
   const out = await run();
   assert.equal(out.status, 202);
@@ -100,7 +100,7 @@ test("webhook Zaps still run immediately with the given payload", async () => {
   assert.deepEqual(state.runs.at(-1).triggerPayload, { triggeredBy: "user_click" });
 });
 
-test("a Zap that is turned off isn't run (its run would only be cancelled)", async () => {
+test("a Flow that is turned off isn't run (its run would only be cancelled)", async () => {
   state.zap.status = "DISABLED";
   let polled = false;
   state.poll = async () => { polled = true; };

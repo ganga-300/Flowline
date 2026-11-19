@@ -16,7 +16,7 @@
   /* Text */
   --color-ink: #121316;             /* headings and body */
   --color-ink-muted: #5f636b;       /* secondary text */
-  --color-ink-faint: #8d9098;       /* hints, placeholders */
+  --color-ink-faint: #71747c;       /* hints, placeholders; 4.52:1 on canvas (WCAG AA) */
 
   /* Brand (one line to rebrand) */
   --color-primary: #3a6cf4;

@@ -1,4 +1,4 @@
-// Ownership checks: a logged-in user must not read or use another user's Zaps, runs,
+// Ownership checks: a logged-in user must not read or use another user's Flows, runs,
 // trigger samples or connected accounts. MOCKED: Prisma is an in-memory fake that
 // understands the nested `where` filters these routes use; no database or network.
 const { test, beforeEach } = require("node:test");
@@ -104,7 +104,7 @@ test("GET /zaps/test-step/sample/:triggerId - other user's trigger data is 404",
   assert.doesNotMatch(JSON.stringify(other.body), /bob private/);
 });
 
-test("POST /zaps - cannot publish a Zap that uses another user's connected account", async () => {
+test("POST /zaps - cannot publish a Flow that uses another user's connected account", async () => {
   const h = route(zapsRouter, "/", "post");
   const body = (triggerConn, stepConn) => ({
     name: "x",
@@ -114,7 +114,7 @@ test("POST /zaps - cannot publish a Zap that uses another user's connected accou
   assert.equal((await call(h, { userId: "alice", body: body("conn_a", "conn_a") })).status, 201);
   assert.equal((await call(h, { userId: "alice", body: body("conn_b", "conn_a") })).status, 400);
   assert.equal((await call(h, { userId: "alice", body: body("conn_a", "conn_b") })).status, 400);
-  assert.equal(created.length, 1, "only the valid Zap was created");
+  assert.equal(created.length, 1, "only the valid Flow was created");
 });
 
 test("POST /zaps/test-step - cannot run an action with another user's connected account", async () => {

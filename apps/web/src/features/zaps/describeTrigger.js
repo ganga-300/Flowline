@@ -1,7 +1,7 @@
 import { triggerProviders } from "../../integrations/triggers.js";
 
 /**
- * Human-readable summary of a Zap's trigger for cards and headers.
+ * Human-readable summary of a Flow's trigger for cards and headers.
  * { app: "github", appName: "GitHub", event: "New Issue Created", detail: "octo/demo" }
  */
 export function describeTrigger(trigger) {

@@ -1,5 +1,5 @@
 /**
- * Creating and queueing Zap runs so that each trigger event produces exactly one run and
+ * Creating and queueing Flow runs so that each trigger event produces exactly one run and
  * one job, even if the process crashes in between:
  *  - the run's idempotencyKey (unique in the DB) prevents a second run for the same event;
  *  - the BullMQ jobId is fixed per run, and BullMQ ignores adding a job whose id already

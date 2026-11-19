@@ -80,7 +80,7 @@ model Connection {
   triggers      Trigger[]
   steps         Step[]
   userId String
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
@@ -103,7 +103,7 @@ model Zap {
   runs        ZapRun[]
   alerts      Alert[]
   userId String
-  user   User @relation(fields: [userId], references: [id])
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 
@@ -244,9 +244,29 @@ model User {
   email     String   @unique
   password  String
   createdAt DateTime @default(now())
+  // Email me when a Flow fails or an account needs reconnecting (Settings).
+  emailAlerts  Boolean @default(true)
+  // Part of every login token; bumping it (password change, "log out everywhere",
+  // password reset) makes all earlier tokens invalid.
+  tokenVersion Int     @default(0)
   zaps      Zap[]
   connections Connection[]
   alerts    Alert[]
+  passwordResets PasswordResetToken[]
+}
+
+// A "forgot password" link. Only a SHA-256 hash of the token is stored; it works once,
+// for an hour.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model Alert {

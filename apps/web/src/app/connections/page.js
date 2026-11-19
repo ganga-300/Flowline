@@ -22,7 +22,7 @@ const SECTIONS = [
 ];
 const DRAWER_TITLE_ID = "app-drawer-title";
 
-/** Apps directory: every app Zaps can use, the accounts connected to each, and what it can do. */
+/** Apps directory: every app Flows can use, the accounts connected to each, and what it can do. */
 export default function AppsPage() {
   const [connections, setConnections] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -49,7 +49,7 @@ export default function AppsPage() {
       else {
         if (result) {
           setNewConnectionId(params.get("connectionId"));
-          setToast({ tone: "success", message: `${APP_NAMES[result.provider] || "Account"} connected. You can now use it in your Zaps.` });
+          setToast({ tone: "success", message: `${APP_NAMES[result.provider] || "Account"} connected. You can now use it in your Flows.` });
         }
         const open = result?.provider || appId;
         if (APP_NAMES[open]) setOpenAppId(open);
@@ -117,7 +117,7 @@ export default function AppsPage() {
       if (!res.ok) throw new Error(data.error || "Failed to disconnect");
       const turnedOff = data.disabledZaps || [];
       setConnections((prev) => prev.filter((c) => c.id !== disconnectTarget.conn.id));
-      // Longer when it lists Zaps that were turned off: that's something to act on.
+      // Longer when it lists Flows that were turned off: that's something to act on.
       setToast({ tone: turnedOff.length ? "warning" : "success", message: disconnectedMessage(disconnectTarget.app.name, turnedOff), ms: turnedOff.length ? 10000 : 4000 });
       setDisconnectTarget(null);
     } catch (err) {
@@ -136,7 +136,7 @@ export default function AppsPage() {
 
   return (
     <AppShell>
-      <PageHeader title="Apps" description="Connect the apps your Zaps use and see what each one can do. You can connect more than one account per app." />
+      <PageHeader title="Apps" description="Connect the apps your Flows use and see what each one can do. You can connect more than one account per app." />
 
       {oauthResult && (
         <Alert tone="danger" title="Connection failed" onDismiss={() => setOauthResult(null)} className="mb-6">

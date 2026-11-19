@@ -18,11 +18,11 @@ export function TriggerTest({ draft, sampleData, sampleStatus, isFetchingSample,
   const provider = draft.config?.provider || "webhook";
   const canFetch = ["github", "gmail", "slack"].includes(provider);
   const isWebhook = provider === "webhook";
-  const isPublished = Boolean(draft.id); // a published webhook Zap can show its real requests
+  const isPublished = Boolean(draft.id); // a published webhook Flow can show its real requests
   const fields = flattenSample(sampleData).map(({ path, value }) => ({ key: `trigger.${path}`, value }));
   const showingReal = sampleStatus?.tone === "success";
 
-  // A published webhook Zap loads the last request it received as soon as the tab opens.
+  // A published webhook Flow loads the last request it received as soon as the tab opens.
   const autoLoaded = useRef(false);
   useEffect(() => {
     if (!isWebhook || !isPublished || autoLoaded.current) return;
@@ -50,7 +50,7 @@ export function TriggerTest({ draft, sampleData, sampleStatus, isFetchingSample,
           <div>
             <h4 className="text-sm font-semibold text-ink">Use a real request</h4>
             <p className="mt-0.5 text-sm text-ink-muted">
-              The fields below come from the JSON body of the last request sent to this Zap&apos;s webhook URL.
+              The fields below come from the JSON body of the last request sent to this Flow&apos;s webhook URL.
             </p>
           </div>
           <Button variant="outline" onClick={onFetchSample} loading={isFetchingSample} leftIcon={<DownloadCloud className="size-4" />}>
@@ -60,7 +60,7 @@ export function TriggerTest({ draft, sampleData, sampleStatus, isFetchingSample,
         </div>
       ) : (
         <p className="rounded-control bg-subtle px-3.5 py-3 text-sm text-ink-muted">
-          The trigger data is the JSON body of each request. Publish the Zap to get its URL, send it one
+          The trigger data is the JSON body of each request. Publish the Flow to get its URL, send it one
           request, and its real fields will show here. Until then these are example fields.
         </p>
       )}

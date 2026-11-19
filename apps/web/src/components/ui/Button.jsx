@@ -18,7 +18,7 @@ const sizes = {
 
 /**
  * Button or link styled as a button.
- * <Button>Save</Button> · <Button href="/zaps/new" variant="primary">Create</Button>
+ * <Button>Save</Button> · <Button href="/flows/new" variant="primary">Create</Button>
  */
 export function Button({
   variant = "primary",

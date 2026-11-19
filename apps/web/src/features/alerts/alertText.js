@@ -1,7 +1,8 @@
 // Pure helpers for failure alerts. The worker writes messages as
-// `Zap "<name>" failed during execution: <reason>` (apps/worker/src/index.js).
+// `Flow "<name>" failed during execution: <reason>` (apps/worker/src/index.js).
 
-const PREFIX = /^Zap ".*" failed during execution:\s*/s;
+// Alerts saved before "Zaps" were renamed to "Flows" start with "Zap".
+const PREFIX = /^(?:Flow|Zap) ".*" failed during execution:\s*/s;
 
 /** The useful part of the message: why the run failed. */
 export function alertReason(alert) {
@@ -18,6 +19,6 @@ export function isOutcomeUnknownAlert(alert) {
 /** Link to the failed run, opened and highlighted on the run history page. */
 export function alertRunHref(alert) {
   if (!alert?.zapId) return null;
-  const base = `/zaps/${alert.zapId}/runs`;
+  const base = `/flows/${alert.zapId}/runs`;
   return alert.zapRunId ? `${base}?run=${encodeURIComponent(alert.zapRunId)}` : base;
 }

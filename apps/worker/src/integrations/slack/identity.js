@@ -1,6 +1,6 @@
 /**
  * Who Flowline is in a Slack workspace, so the "New Message" trigger can skip messages it
- * posted itself. Without that, a Zap that posts into the channel it watches would trigger
+ * posted itself. Without that, a Flow that posts into the channel it watches would trigger
  * itself forever (bot-token messages have no `subtype`, so the subtype check misses them).
  *
  * auth.test is called once per token and cached for the life of the process; a failed call

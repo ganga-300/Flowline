@@ -6,7 +6,7 @@ import { Badge, Button } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
 /**
- * Top bar: back, editable Zap name, whether there are unsaved changes, and Publish / Save
+ * Top bar: back, editable Flow name, whether there are unsaved changes, and Publish / Save
  * changes. onLeave: Back and Cancel (asks first when there are unsaved changes).
  */
 export function BuilderHeader({ zapName, onRename, isEditing, isDirty, isPublishing, onPublish, onLeave }) {
@@ -15,7 +15,7 @@ export function BuilderHeader({ zapName, onRename, isEditing, isDirty, isPublish
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface/90 backdrop-blur">
       <div className="flex h-16 items-center gap-3 px-4 sm:px-6">
-        <button type="button" onClick={onLeave} aria-label="Back to Zaps" className="rounded-control p-2 text-ink-muted hover:bg-subtle hover:text-ink cursor-pointer">
+        <button type="button" onClick={onLeave} aria-label="Back to Flows" className="rounded-control p-2 text-ink-muted hover:bg-subtle hover:text-ink cursor-pointer">
           <ArrowLeft className="size-4" />
         </button>
         <div className="h-5 w-px bg-line" />
@@ -24,7 +24,7 @@ export function BuilderHeader({ zapName, onRename, isEditing, isDirty, isPublish
           {editingName ? (
             <input
               autoFocus
-              aria-label="Zap name"
+              aria-label="Flow name"
               value={zapName}
               onChange={(e) => onRename(e.target.value)}
               onBlur={() => setEditingName(false)}
@@ -38,7 +38,7 @@ export function BuilderHeader({ zapName, onRename, isEditing, isDirty, isPublish
               className="group flex min-w-0 items-center gap-2 rounded-control px-2.5 py-1.5 hover:bg-subtle cursor-pointer"
               title="Rename"
             >
-              <span className="truncate text-base font-semibold text-ink">{zapName || "Untitled Zap"}</span>
+              <span className="truncate text-base font-semibold text-ink">{zapName || "Untitled Flow"}</span>
               <Pencil className="size-3.5 shrink-0 text-ink-faint opacity-0 transition group-hover:opacity-100" />
             </button>
           )}

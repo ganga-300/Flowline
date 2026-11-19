@@ -169,7 +169,7 @@ test(`after ${MAX_RECOVERY_ATTEMPTS} recovery attempts the run is marked FAILED,
   assert.match(runs[0].stepExecutions[0].error, /couldn't restart this run/);
   assert.equal(alerts.length, 1);
   assert.deepEqual({ userId: alerts[0].userId, zapId: alerts[0].zapId, zapRunId: alerts[0].zapRunId }, { userId: "u1", zapId: "z1", zapRunId: "r1" });
-  assert.match(alerts[0].message, /Zap "Follow up" failed: Flowline couldn't restart this run after 3 attempts/);
+  assert.match(alerts[0].message, /Flow "Follow up" failed: Flowline couldn't restart this run after 3 attempts/);
 
   // A FAILED run is never swept again.
   assert.deepEqual(await sweep(), {});
@@ -466,7 +466,7 @@ test("a run that already completed: nothing is queued, leftover jobs untouched",
   assert.equal(queue.adds.length + queue.removed.length, 0);
 });
 
-test("a run that was deleted (Zap deleted): nothing is queued; its leftover delayed job stays (the worker skips it)", async () => {
+test("a run that was deleted (Flow deleted): nothing is queued; its leftover delayed job stays (the worker skips it)", async () => {
   queue.put("zap-run-gone-after-d1", "resume-zap-run", { zapRunId: "gone", resumeAfterStepId: "d1" }, "delayed");
   const result = await sweep();
   assert.deepEqual(result, {});

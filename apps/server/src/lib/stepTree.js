@@ -1,7 +1,7 @@
 const { Prisma } = require("@prisma/client");
 
 /**
- * Zaps are saved as a flat list of steps. Nested steps (the steps of a Path, a Loop's body)
+ * Flows are saved as a flat list of steps. Nested steps (the steps of a Path, a Loop's body)
  * name their parent with `parentRef`: the parent's `config.ref`, the id the builder gave it,
  * because a step being created has no database id yet. Path conditions travel as
  * `branchCondition` on the first step of each path (null = the "Otherwise" path).
@@ -30,7 +30,7 @@ function planStepTree(steps) {
   }
   for (const step of steps) {
     if (step.parentRef !== undefined && step.parentRef !== null && !refs.has(step.parentRef)) {
-      return { error: `A step is nested under "${step.parentRef}", which isn't in this Zap.` };
+      return { error: `A step is nested under "${step.parentRef}", which isn't in this Flow.` };
     }
   }
 
@@ -52,7 +52,7 @@ function planStepTree(steps) {
 
 /**
  * Creates or updates each step (in planStepTree order) and links children to their parents.
- * existingIds: ids of this Zap's saved steps; a step with one of them is updated in place,
+ * existingIds: ids of this Flow's saved steps; a step with one of them is updated in place,
  * which keeps its run history. Returns the ids of every saved step.
  */
 async function saveStepTree(tx, zapId, ordered, existingIds = new Set()) {

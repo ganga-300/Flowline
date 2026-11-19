@@ -79,7 +79,7 @@ export function RunRow({ run, zapId, expanded, detail, loadingDetail, detailErro
 /**
  * The expanded part of a run: timing, trigger data and the step trace.
  * Trigger data comes from the run, or from its loaded detail when the list omits it.
- * extra: optional rows for the details grid (e.g. the Zap on the history page).
+ * extra: optional rows for the details grid (e.g. the Flow on the history page).
  */
 export function RunDetails({ id, run, zapId, detail, loadingDetail, detailError, extra }) {
   const meta = runStatusMeta(detail || run);
@@ -96,7 +96,7 @@ export function RunDetails({ id, run, zapId, detail, loadingDetail, detailError,
       {run.retryOfRunId && (
         <p className="text-sm text-ink-muted">
           Retry of{" "}
-          <Link href={`/zaps/${zapId}/runs?run=${run.retryOfRunId}`} className="font-medium text-ink underline underline-offset-2">this failed run</Link>
+          <Link href={`/flows/${zapId}/runs?run=${run.retryOfRunId}`} className="font-medium text-ink underline underline-offset-2">this failed run</Link>
           , starting from the step that failed.
         </p>
       )}
