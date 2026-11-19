@@ -65,7 +65,7 @@ test("status filter: built-in apps only appear under All", () => {
   assert.deepEqual(statusCounts(apps, byApp), { all: 5, connected: 1, not_connected: 1 });
 });
 
-test("labels: connected count, GitHub @login, Zap usage", () => {
+test("labels: connected count, GitHub @login, Flow usage", () => {
   assert.equal(capabilitySummary(apps[0]), "1 trigger · 2 actions");
   assert.equal(capabilitySummary(apps.find((a) => a.id === "math")), "1 action");
   assert.equal(connectedLabel(1), "Connected · 1 account");
@@ -74,29 +74,29 @@ test("labels: connected count, GitHub @login, Zap usage", () => {
   assert.equal(accountLabel("github", { email: "github Account (abc123)" }), "github Account (abc123)");
   assert.equal(accountLabel("slack", { email: "Acme" }), "Acme");
   assert.equal(usageText(undefined), null, "older API without usedBy: say nothing");
-  assert.equal(usageText([]), "Not used in any Zaps");
-  assert.equal(usageText([{ zapId: "z1", zapName: "A" }]), "Used in 1 Zap");
-  assert.equal(usageText([{}, {}]), "Used in 2 Zaps");
+  assert.equal(usageText([]), "Not used in any Flows");
+  assert.equal(usageText([{ zapId: "z1", zapName: "A" }]), "Used in 1 Flow");
+  assert.equal(usageText([{}, {}]), "Used in 2 Flows");
 });
 
-test("disconnect warning names the Zaps that will stop working", () => {
+test("disconnect warning names the Flows that will stop working", () => {
   const zaps = (...names) => names.map((zapName, i) => ({ zapId: `z${i}`, zapName }));
   assert.equal(zapNameList(zaps("A")), "“A”");
   assert.equal(zapNameList(zaps("A", "B")), "“A” and “B”");
   assert.equal(zapNameList(zaps("A", "B", "C", "D", "E")), "“A”, “B”, “C” and 2 more");
   assert.equal(disconnectWarning("Slack", zaps("Digest")), "“Digest” uses this account. Disconnecting turns it off until you choose another Slack account for it.");
   assert.match(disconnectWarning("Slack", zaps("A", "B")), /^“A” and “B” use this account\. Disconnecting turns them off/);
-  assert.equal(disconnectWarning("Slack", []), "No Zaps use this Slack account right now.");
-  assert.match(disconnectWarning("Slack", undefined), /Zaps that use this Slack account are turned off/);
+  assert.equal(disconnectWarning("Slack", []), "No Flows use this Slack account right now.");
+  assert.match(disconnectWarning("Slack", undefined), /Flows that use this Slack account are turned off/);
 });
 
-test("disconnect warning names only the Zaps that are on (the server turns those off)", () => {
+test("disconnect warning names only the Flows that are on (the server turns those off)", () => {
   const usedBy = [{ zapId: "1", zapName: "A", status: "ENABLED" }, { zapId: "2", zapName: "B", status: "DISABLED" }];
   assert.equal(disconnectWarning("Gmail", usedBy), "“A” and “B” use this account. Disconnecting turns off “A” until you choose another Gmail account for it.");
   assert.equal(disconnectWarning("Gmail", [usedBy[1]]), "“B” uses this account. It will need another Gmail account before running again.");
 });
 
-test("after disconnecting, the toast says which Zaps were turned off", () => {
+test("after disconnecting, the toast says which Flows were turned off", () => {
   assert.equal(disconnectedMessage("Slack", []), "Slack account disconnected.");
   assert.equal(disconnectedMessage("Slack"), "Slack account disconnected.");
   assert.equal(
@@ -114,6 +114,6 @@ test("accounts the app stopped accepting are flagged for reconnecting", () => {
   assert.equal(needsReconnect(broken), true);
   assert.equal(brokenCount([ok, broken, broken]), 2);
   assert.equal(brokenCount(), 0);
-  assert.equal(reconnectMessage("Slack", broken), "Slack stopped accepting this account on Nov 18, 2026. Zaps that use it can't run until you reconnect it.");
+  assert.equal(reconnectMessage("Slack", broken), "Slack stopped accepting this account on Nov 18, 2026. Flows that use it can't run until you reconnect it.");
   assert.match(reconnectMessage("Slack", { status: "NEEDS_RECONNECT" }), /^Slack stopped accepting this account\. /);
 });

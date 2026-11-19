@@ -22,7 +22,11 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata = {
-  title: "Flowline",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
+  title: {
+    default: "Flowline - Automate the busywork between GitHub, Slack and Gmail",
+    template: "%s · Flowline",
+  },
   description: "Automate the busywork between GitHub, Slack and Gmail.",
 };
 

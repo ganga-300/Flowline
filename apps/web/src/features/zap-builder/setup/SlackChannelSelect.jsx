@@ -41,7 +41,7 @@ export function SlackChannelSelect({ connectionId, value, onChange }) {
   }
 
   return (
-    <Field label="Channel" error={loadError} hint="New messages in this channel start the Zap.">
+    <Field label="Channel" error={loadError} hint="New messages in this channel start the Flow.">
       <Select value={value} onChange={(e) => onChange(e.target.value)} disabled={loading} placeholder={loading ? "Loading channels…" : "Select a channel"}>
         {channels.map((ch) => (
           <option key={ch.value || ch.id} value={ch.value || ch.id}>{ch.label || ch.name || ch.value}</option>

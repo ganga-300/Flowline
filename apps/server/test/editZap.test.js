@@ -1,4 +1,4 @@
-// PUT /zaps/:id - editing a published Zap.
+// PUT /zaps/:id - editing a published Flow.
 // MOCKED: Prisma is an in-memory fake (with $transaction); no database or network.
 const { test, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
@@ -108,13 +108,13 @@ test("switching to a webhook trigger gets a webhook token", async () => {
   assert.equal(db.trigger[0].connectionId, null);
 });
 
-test("another user's Zap is 404 and unchanged", async () => {
+test("another user's Flow is 404 and unchanged", async () => {
   const out = await put("alice", "z2", { name: "hijack", trigger: githubTrigger(), steps: [] });
   assert.equal(out.status, 404);
   assert.equal(db.zap[1].zapName, "Bob's");
 });
 
-test("another user's account or a step from another Zap is rejected without changes", async () => {
+test("another user's account or a step from another Flow is rejected without changes", async () => {
   let out = await put("alice", "z1", { name: "x", trigger: githubTrigger(), steps: [slackStep({ connectionId: "c_bob" })] });
   assert.equal(out.status, 400);
   out = await put("alice", "z1", { name: "x", trigger: githubTrigger(), steps: [slackStep({ id: "s_other_zap" })] });
@@ -159,7 +159,7 @@ test("saves the whole step tree: nested steps link to their parent, removed step
 test("a parentRef that isn.t in the request is a 400", async () => {
   const out = await put("alice", "z1", { name: "x", trigger: githubTrigger(), steps: [slackStep(), { type: "ACTION", order: 0, parentRef: "nope", config: { ref: "step-9" } }] });
   assert.equal(out.status, 400);
-  assert.match(out.body.error, /isn.t in this Zap/);
+  assert.match(out.body.error, /isn.t in this Flow/);
 });
 
 test("a step that isn't set up (required field empty) can't be saved, and nothing changes", async () => {
@@ -171,7 +171,7 @@ test("a step that isn't set up (required field empty) can't be saved, and nothin
   assert.equal(JSON.stringify(db), before);
 });
 
-test("the Zap needs a non-empty name", async () => {
+test("the Flow needs a non-empty name", async () => {
   const body = (name) => ({ name, trigger: { type: "WEBHOOK", config: { provider: "webhook", event: "catch_hook" } }, steps: [slackStep()] });
   assert.equal((await put("alice", "z1", body("   "))).status, 400);
   assert.equal((await put("alice", "z1", body("x".repeat(121)))).status, 400);

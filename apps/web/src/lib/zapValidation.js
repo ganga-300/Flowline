@@ -1,6 +1,6 @@
-// Checks run before publishing a Zap. Returns a user-facing error message, or null if OK.
+// Checks run before publishing a Flow. Returns a user-facing error message, or null if OK.
 // Kept free of React so it can be unit-tested.
-// Uses the same rule as the canvas's "Ready" badge (missingSetup), so a Zap can only be
+// Uses the same rule as the canvas's "Ready" badge (missingSetup), so a Flow can only be
 // published when every card says Ready.
 import { missingSetup } from "../features/zap-builder/setupProgress.js";
 import { flattenSteps, stepNumbers, treeProblem } from "./stepTree.js";

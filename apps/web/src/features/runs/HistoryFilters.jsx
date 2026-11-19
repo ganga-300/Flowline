@@ -17,7 +17,7 @@ const chipDot = {
 const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40";
 
 /**
- * Zap History filter bar: status chips with counts, then search, Zap and date range.
+ * Flow History filter bar: status chips with counts, then search, Flow and date range.
  * counts: { ALL, SUCCESS, FAILED, FILTERED, ACTIVE, CANCELLED } or null while unknown.
  */
 export function HistoryFilters({ filters, counts, zapOptions, searchText, onSearchText, onChange, onClear, canClear }) {
@@ -77,15 +77,15 @@ export function HistoryFilters({ filters, counts, zapOptions, searchText, onSear
             type="search"
             value={searchText}
             onChange={(e) => onSearchText(e.target.value)}
-            placeholder="Search by Zap name"
-            aria-label="Search by Zap name"
+            placeholder="Search by Flow name"
+            aria-label="Search by Flow name"
             maxLength={100}
             className="pl-9"
           />
         </div>
         <div className="xl:w-60">
           <Select
-            aria-label="Zap"
+            aria-label="Flow"
             value={filters.zapId}
             onChange={(e) => onChange({ zapId: e.target.value })}
             options={zapOptions}

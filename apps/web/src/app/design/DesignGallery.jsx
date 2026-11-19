@@ -28,7 +28,7 @@ export function DesignGallery() {
       <PageHeader
         title="Design preview"
         description="Every shared component in the light theme. Development only."
-        actions={<Button leftIcon={<Plus className="size-4" />}>New Zap</Button>}
+        actions={<Button leftIcon={<Plus className="size-4" />}>New Flow</Button>}
       />
 
       <div className="space-y-12">
@@ -64,7 +64,7 @@ export function DesignGallery() {
         <Section title="Form controls">
           <Card>
             <CardBody className="grid gap-5 sm:grid-cols-2">
-              <Field label="Zap name" htmlFor="n" required hint="Shown on your dashboard.">
+              <Field label="Flow name" htmlFor="n" required hint="Shown on your dashboard.">
                 <Input id="n" placeholder="New issue to Slack" />
               </Field>
               <Field label="Channel" htmlFor="c">
@@ -141,9 +141,9 @@ export function DesignGallery() {
         <Section title="Empty state">
           <EmptyState
             icon={<Workflow className="size-5" />}
-            title="No Zaps yet"
+            title="No Flows yet"
             description="Create your first automation: pick a trigger, then the action Flowline should take."
-            action={<Button leftIcon={<Plus className="size-4" />}>Create a Zap</Button>}
+            action={<Button leftIcon={<Plus className="size-4" />}>Create a Flow</Button>}
           />
         </Section>
 
@@ -161,7 +161,7 @@ export function DesignGallery() {
       <Modal
         open={modal}
         onClose={() => setModal(false)}
-        title="Delete this Zap?"
+        title="Delete this Flow?"
         description="Its run history is deleted too. This can't be undone."
         footer={<><Button variant="secondary" onClick={() => setModal(false)}>Cancel</Button><Button variant="danger">Delete</Button></>}
       />

@@ -7,8 +7,12 @@ const jwt = require("jsonwebtoken");
 const SESSION = "session";
 const OAUTH_STATE = "oauth_state";
 
-function signSessionToken(userId) {
-  return jwt.sign({ userId, typ: SESSION }, process.env.JWT_SECRET, { expiresIn: "7d" });
+/**
+ * tokenVersion: the user's current version (User.tokenVersion). Changing the password,
+ * resetting it or "log out everywhere" bumps it, which ends every token signed before.
+ */
+function signSessionToken(userId, tokenVersion = 0) {
+  return jwt.sign({ userId, tv: tokenVersion, typ: SESSION }, process.env.JWT_SECRET, { expiresIn: "7d" });
 }
 
 /** Returns the decoded login token; throws if it is invalid, expired or not a login token. */

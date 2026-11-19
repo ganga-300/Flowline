@@ -1,7 +1,7 @@
 /**
  * Step outputs in the run context.
  * Outputs are stored under the step's database id AND under `config.ref` - the id the
- * builder used when the Zap was created ("step-1", ...). The builder's variable picker
+ * builder used when the Flow was created ("step-1", ...). The builder's variable picker
  * inserts {{steps.<ref>.output.<field>}}, because database ids don't exist until publish.
  */
 function recordStepOutput(context, step, output) {

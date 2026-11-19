@@ -11,7 +11,7 @@ const { planStepTree, saveStepTree } = require("../lib/stepTree");
 const { CONNECTION_SELECT, zapListItem } = require("../lib/zapHealth");
 
 // Every account referenced by the trigger or a step must belong to this user;
-// otherwise a Zap could act through someone else's Gmail/Slack/GitHub.
+// otherwise a Flow could act through someone else's Gmail/Slack/GitHub.
 async function ownsAllConnections(userId, trigger, steps) {
   const ids = [
     trigger?.connectionId,
@@ -31,9 +31,9 @@ function triggerWatchKey(type, config = {}, connectionId = null) {
 }
 
 const ACCOUNT_ERROR = "One or more selected accounts were not found. Please reselect them in the builder.";
-const TURNED_OFF_ERROR = "This Zap is turned off. Turn it on to run it.";
+const TURNED_OFF_ERROR = "This Flow is turned off. Turn it on to run it.";
 
-// GET /zaps - list all Zaps, newest first. Each has `lastRun` ({ id, status, createdAt,
+// GET /zaps - list all Flows, newest first. Each has `lastRun` ({ id, status, createdAt,
 // completedAt } or null) and `brokenConnections` (accounts that need reconnecting).
 router.get("/",requireAuth, async (req, res) => {
   const zaps = await prisma.zap.findMany({
@@ -49,9 +49,9 @@ router.get("/",requireAuth, async (req, res) => {
   res.json({ zaps: zaps.map(zapListItem) });
 });
 
-// GET /zaps/:id - one Zap with trigger and step tree
+// GET /zaps/:id - one Flow with trigger and step tree
 router.get("/:id",requireAuth, async (req, res) => {
-  // Only the owner's Zap: the response includes the webhook token and connection ids.
+  // Only the owner's Flow: the response includes the webhook token and connection ids.
   const zap = await prisma.zap.findFirst({
     where: { id: req.params.id, userId: req.userId },
     include: {
@@ -63,7 +63,7 @@ router.get("/:id",requireAuth, async (req, res) => {
   });
 
   if (!zap) {
-    return res.status(404).json({ error: "Zap not found" });
+    return res.status(404).json({ error: "Flow not found" });
   }
 
   res.json({ zap });
@@ -71,12 +71,12 @@ router.get("/:id",requireAuth, async (req, res) => {
 
 const MAX_NAME_LENGTH = 120;
 function nameError(name) {
-  if (typeof name !== "string" || !name.trim()) return "Give the Zap a name.";
-  if (name.trim().length > MAX_NAME_LENGTH) return `Keep the Zap's name under ${MAX_NAME_LENGTH} characters.`;
+  if (typeof name !== "string" || !name.trim()) return "Give the Flow a name.";
+  if (name.trim().length > MAX_NAME_LENGTH) return `Keep the Flow's name under ${MAX_NAME_LENGTH} characters.`;
   return null;
 }
 
-// POST /zaps - create a Zap with Trigger and Steps
+// POST /zaps - create a Flow with Trigger and Steps
 router.post("/",requireAuth, async (req, res) => {
   const { name, trigger, steps, status } = req.body;
 
@@ -101,7 +101,7 @@ router.post("/",requireAuth, async (req, res) => {
       ? crypto.randomBytes(16).toString("hex")
       : undefined;
 
-  // Steps are created after the Zap (parents before children) so nested steps can be
+  // Steps are created after the Flow (parents before children) so nested steps can be
   // linked to their parent's new id; all in one transaction.
   const zap = await prisma.$transaction(async (tx) => {
     const created = await tx.zap.create({
@@ -132,7 +132,7 @@ router.post("/",requireAuth, async (req, res) => {
   return res.status(201).json({ zap });
 });
 
-// PUT /zaps/:id - edit a published Zap (name, trigger and steps).
+// PUT /zaps/:id - edit a published Flow (name, trigger and steps).
 // The request carries the whole step tree. Existing steps are updated in place by id so their
 // run history (StepExecution rows, deleted on cascade with a step) and `ref` (used by
 // {{steps.<ref>...}}) are kept; saved steps missing from the request are deleted.
@@ -153,7 +153,7 @@ router.put("/:id", requireAuth, async (req, res) => {
       include: { trigger: true, steps: true },
     });
     if (!existing) {
-      return res.status(404).json({ error: "Zap not found" });
+      return res.status(404).json({ error: "Flow not found" });
     }
 
     if (!(await ownsAllConnections(req.userId, trigger, steps))) {
@@ -161,7 +161,7 @@ router.put("/:id", requireAuth, async (req, res) => {
     }
     const existingStepIds = new Set(existing.steps.map((st) => st.id));
     if (steps.some((st) => st.id && !existingStepIds.has(st.id))) {
-      return res.status(400).json({ error: "A step in this request doesn't belong to this Zap." });
+      return res.status(400).json({ error: "A step in this request doesn't belong to this Flow." });
     }
 
     const connectionId = trigger.connectionId || trigger.config?.connectionId || null;
@@ -215,14 +215,14 @@ router.patch("/:id", requireAuth, async (req, res) => {
     });
 
     if (!existingZap) {
-      return res.status(404).json({ error: "Zap not found" });
+      return res.status(404).json({ error: "Flow not found" });
     }
 
     if (existingZap.userId !== req.userId) {
       return res.status(403).json({ error: "Unauthorized" });
     }
 
-    // Turning a polling Zap back on starts fresh from "now" (the next check sets a new
+    // Turning a polling Flow back on starts fresh from "now" (the next check sets a new
     // baseline): it doesn't replay what arrived while it was off, or fail on a backlog.
     const turningOn = status === "ENABLED" && existingZap.status !== "ENABLED";
     const zap = await prisma.$transaction(async (tx) => {
@@ -259,7 +259,7 @@ router.delete("/:id", requireAuth, async (req, res) => {
     });
 
     if (!existingZap) {
-      return res.status(404).json({ error: "Zap not found" });
+      return res.status(404).json({ error: "Flow not found" });
     }
 
     if (existingZap.userId !== req.userId) {
@@ -273,7 +273,7 @@ router.delete("/:id", requireAuth, async (req, res) => {
       prisma.zap.delete({ where: { id: req.params.id } }),
     ]);
 
-    return res.json({ success: true, message: "Zap deleted successfully" });
+    return res.json({ success: true, message: "Flow deleted successfully" });
   } catch (err) {
     console.error("Error deleting zap:", err);
     return res.status(500).json({ error: "Failed to delete zap" });
@@ -287,7 +287,7 @@ router.get("/:id/runs",requireAuth, async (req, res) => {
 
     const zap = await prisma.zap.findFirst({ where: { id: req.params.id, userId: req.userId } });
     if (!zap) {
-      return res.status(404).json({ error: "Zap not found" });
+      return res.status(404).json({ error: "Flow not found" });
     }
 
     const runs = await prisma.zapRun.findMany({
@@ -312,7 +312,7 @@ router.get("/:id/runs",requireAuth, async (req, res) => {
 // GET /zaps/:id/runs/:runId - one run's full step-by-step trace
 router.get("/:id/runs/:runId",requireAuth, async (req, res) => {
   try {
-    // The run must belong to this Zap, and the Zap to this user.
+    // The run must belong to this Flow, and the Flow to this user.
     const run = await prisma.zapRun.findFirst({
       where: { id: req.params.runId, zapId: req.params.id, zap: { userId: req.userId } },
       include: {
@@ -345,7 +345,7 @@ router.post("/:id/runs/:runId/retry", requireAuth, async (req, res) => {
     });
 
     if (!zap) {
-      return res.status(404).json({ error: "Zap not found" });
+      return res.status(404).json({ error: "Flow not found" });
     }
 
     const previousRun = await prisma.zapRun.findFirst({
@@ -355,7 +355,7 @@ router.post("/:id/runs/:runId/retry", requireAuth, async (req, res) => {
     if (!previousRun) {
       return res.status(404).json({ error: "Original run not found" });
     }
-    // The worker cancels runs of a Zap that's off, so don't start one that can't run.
+    // The worker cancels runs of a Flow that's off, so don't start one that can't run.
     if (zap.status !== "ENABLED") {
       return res.status(409).json({ error: TURNED_OFF_ERROR });
     }
@@ -391,7 +391,7 @@ router.post("/:id/runs/:runId/retry", requireAuth, async (req, res) => {
   }
 });
 
-// POST /zaps/:id/run - trigger a manual instant run for a Zap
+// POST /zaps/:id/run - trigger a manual instant run for a Flow
 router.post("/:id/run", requireAuth, async (req, res) => {
   try {
     const zap = await prisma.zap.findFirst({
@@ -400,9 +400,9 @@ router.post("/:id/run", requireAuth, async (req, res) => {
     });
 
     if (!zap) {
-      return res.status(404).json({ error: "Zap not found" });
+      return res.status(404).json({ error: "Flow not found" });
     }
-    // The worker cancels runs of a Zap that's off, so don't start one that can't run.
+    // The worker cancels runs of a Flow that's off, so don't start one that can't run.
     if (zap.status !== "ENABLED") {
       return res.status(409).json({ error: TURNED_OFF_ERROR });
     }
@@ -457,7 +457,7 @@ router.post("/:id/run", requireAuth, async (req, res) => {
           success: true,
           newEvents: 0,
           runId: null,
-          message: `First check done. Flowline will run this Zap for new ${noun}s from now on - create one and click Run again.`,
+          message: `First check done. Flowline will run this Flow for new ${noun}s from now on - create one and click Run again.`,
         });
       }
 
@@ -492,7 +492,7 @@ router.post("/:id/run", requireAuth, async (req, res) => {
 
     await queueRun(zapExecutionQueue, run);
 
-    return res.status(202).json({ success: true, runId: run.id, message: "Zap triggered successfully" });
+    return res.status(202).json({ success: true, runId: run.id, message: "Flow triggered successfully" });
   } catch (err) {
     console.error("Error running zap:", err);
     return res.status(500).json({ error: "Failed to run zap: " + err.message });

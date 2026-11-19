@@ -145,7 +145,7 @@ test("Redis lost the resume job: the sweep rebuilds it and the resumed run finis
   assert.deepEqual(slackPosts.map((p) => p.text), ["before", "after Ana"], "step 1 not re-sent; step 2 sent once");
 });
 
-test("resume after a Delay step that was removed from the Zap: the run FAILS with a clear error (not a silent success)", async () => {
+test("resume after a Delay step that was removed from the Flow: the run FAILS with a clear error (not a silent success)", async () => {
   await processJob({ id: "j1", data: { zapRunId: "r1" } });
   db.steps = db.steps.filter((s) => s.id !== "d1"); // edited while waiting
   db.executions = db.executions.filter((e) => e.stepId !== "d1"); // cascade
@@ -166,9 +166,9 @@ test("a resume job for a finished or deleted run does nothing", async () => {
   assert.equal(slackPosts.length, 0);
 });
 
-// ── Turned-off Zaps ──
+// ── Turned-off Flows ──
 
-test("a queued run whose Zap was turned off is CANCELLED, not run", async () => {
+test("a queued run whose Flow was turned off is CANCELLED, not run", async () => {
   db.zapStatus = "DISABLED";
   await processJob({ id: "j1", data: { zapRunId: "r1" } });
   assert.equal(run().status, "CANCELLED");
@@ -178,7 +178,7 @@ test("a queued run whose Zap was turned off is CANCELLED, not run", async () => 
   assert.equal(db.alerts.length, 0, "not a failure");
 });
 
-test("turning the Zap off while a run waits on a Delay cancels the rest of the run", async () => {
+test("turning the Flow off while a run waits on a Delay cancels the rest of the run", async () => {
   await processJob({ id: "j1", data: { zapRunId: "r1" } });
   assert.equal(slackPosts.length, 1);
   db.zapStatus = "DISABLED";

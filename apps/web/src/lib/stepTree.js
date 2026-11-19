@@ -207,7 +207,7 @@ export function allowedKinds(where, index) {
 export const otherwiseName = OTHERWISE;
 
 /**
- * Problems that would stop the Zap from running as drawn. Returns a user-facing message or
+ * Problems that would stop the Flow from running as drawn. Returns a user-facing message or
  * null. stepLabel(step) names a step in messages.
  */
 export function treeProblem(steps, stepLabel = (s) => s.name || "a step") {

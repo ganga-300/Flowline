@@ -7,7 +7,7 @@ import { mathIntegration } from "../../integrations/math.js";
 
 /** One-line purpose per app; falls back to the integration's own description. */
 const PURPOSES = {
-  gmail: "Send emails and start Zaps from new mail",
+  gmail: "Send emails and start Flows from new mail",
   slack: "Post messages and react to channel activity",
   github: "Open issues, comment and watch code pushes",
   webhook: "Catch incoming requests or call any URL",
@@ -32,7 +32,7 @@ function builtInApps() {
       name: "Webhooks",
       description: webhook?.description || "Catch and send HTTP requests",
       triggers: (webhook?.events || []).map(pick),
-      actions: [{ id: "http_request", name: "HTTP request", description: "Send a request with your Zap's data to any URL" }],
+      actions: [{ id: "http_request", name: "HTTP request", description: "Send a request with your Flow's data to any URL" }],
     },
     formatterIntegration,
     mathIntegration,
@@ -156,13 +156,13 @@ export function connectedOn(date) {
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-/** "Used in 2 Zaps" / "Not used in any Zaps"; null when the server didn't say. */
+/** "Used in 2 Flows" / "Not used in any Flows"; null when the server didn't say. */
 export function usageText(usedBy) {
   if (!Array.isArray(usedBy)) return null;
-  return usedBy.length === 0 ? "Not used in any Zaps" : `Used in ${plural(usedBy.length, "Zap")}`;
+  return usedBy.length === 0 ? "Not used in any Flows" : `Used in ${plural(usedBy.length, "Flow")}`;
 }
 
-/** Quoted Zap names, at most `max`: "“A”, “B” and 2 more". */
+/** Quoted Flow names, at most `max`: "“A”, “B” and 2 more". */
 export function zapNameList(usedBy = [], max = 3) {
   const names = usedBy.slice(0, max).map((z) => `“${z.zapName}”`);
   const rest = usedBy.length - names.length;
@@ -181,16 +181,16 @@ export function brokenCount(accounts = []) {
   return accounts.filter(needsReconnect).length;
 }
 
-/** "Slack stopped accepting this account on Nov 18. Its Zaps can't run until you reconnect it." */
+/** "Slack stopped accepting this account on Nov 18. Its Flows can't run until you reconnect it." */
 export function reconnectMessage(appName, conn) {
   const when = connectedOn(conn?.lastErrorAt);
-  return `${appName} stopped accepting this account${when ? ` on ${when}` : ""}. Zaps that use it can't run until you reconnect it.`;
+  return `${appName} stopped accepting this account${when ? ` on ${when}` : ""}. Flows that use it can't run until you reconnect it.`;
 }
 
 const them = (n) => (n === 1 ? "it" : "them");
 
 /**
- * Body text for the disconnect confirmation. The server turns off the Zaps that use the
+ * Body text for the disconnect confirmation. The server turns off the Flows that use the
  * account and are on (they can't run without it), so say which.
  */
 export function disconnectWarning(appName, usedBy) {
@@ -202,11 +202,11 @@ export function disconnectWarning(appName, usedBy) {
     const turnsOff = on.length === usedBy.length ? `turns ${them(on.length)} off` : `turns off ${zapNameList(on)}`;
     return `${intro} Disconnecting ${turnsOff} until you choose another ${appName} account for ${them(on.length)}.`;
   }
-  if (Array.isArray(usedBy)) return `No Zaps use this ${appName} account right now.`;
-  return `Zaps that use this ${appName} account are turned off until you choose another account.`;
+  if (Array.isArray(usedBy)) return `No Flows use this ${appName} account right now.`;
+  return `Flows that use this ${appName} account are turned off until you choose another account.`;
 }
 
-/** Toast after disconnecting; disabledZaps: the Zaps the server turned off. */
+/** Toast after disconnecting; disabledZaps: the Flows the server turned off. */
 export function disconnectedMessage(appName, disabledZaps = []) {
   if (!disabledZaps.length) return `${appName} account disconnected.`;
   const n = disabledZaps.length;

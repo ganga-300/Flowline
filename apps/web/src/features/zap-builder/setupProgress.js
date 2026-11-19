@@ -82,7 +82,7 @@ export function missingSetup({ isTrigger = false, draft, getAction = () => null 
 
   const message = (() => {
     if (isTrigger) {
-      if (stage.id === "app") return "Choose the app and event that start this Zap.";
+      if (stage.id === "app") return "Choose the app and event that start this Flow.";
       if (stage.id === "account") return `Choose a ${app} account, or connect one.`;
       return config.provider === "slack" ? "Choose the Slack channel to watch." : "Choose the repository to watch.";
     }

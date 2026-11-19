@@ -14,6 +14,7 @@ const { executeFormatterStep } = require("./formatter");
 const TokenBucket = require("./rateLimiter");
 const { getIntegrationHandler } = require("./integrations/registry");
 const { missingStepConfig } = require("./integrations/requiredConfig");
+const { emailFlowFailed } = require("./alertEmails");
 const { recordStepOutput, restoreStepOutputs } = require("./stepContext");
 const { runWithRetry, retryableError, executionKey, planRecovery, planRetryCarryOver } = require("./recovery");
 const { resumeJobIdFor, JOB_RETENTION } = require("./runQueue");
@@ -43,7 +44,7 @@ async function executeActionStep(step, context) {
   // A step saved before it was fully set up fails clearly (and isn't retried) instead of
   // "succeeding" with empty values. Publishing checks the same rule, so this is a backstop.
   const missing = missingStepConfig(step);
-  if (missing) throw new Error(`This step isn't fully set up: ${missing} Edit the Zap to finish it.`);
+  if (missing) throw new Error(`This step isn't fully set up: ${missing} Edit the Flow to finish it.`);
 
   if (provider && action) {
     const handler = getIntegrationHandler(provider, action);
@@ -184,7 +185,7 @@ async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterS
     }
     if (step.type === "DELAY") {
       // Nested lists don't pass a pause up to the job, so the run would carry on without
-      // waiting. The API rejects this; fail clearly if an older Zap has one.
+      // waiting. The API rejects this; fail clearly if an older Flow has one.
       if (step.parentStepId) {
         throw new Error("A Delay step inside a Branch or Loop isn't supported. Move the Delay to the main list of steps.");
       }
@@ -340,11 +341,11 @@ async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterS
     }
   }
 
-  // Resuming after a Delay step that's no longer in the Zap (edited while the run waited):
+  // Resuming after a Delay step that's no longer in the Flow (edited while the run waited):
   // the steps after it can't be identified - fail clearly instead of finishing as a success
   // with nothing run.
   if (resuming) {
-    throw new Error("The Delay step this run was waiting on was removed from the Zap, so the steps after it were not run. Use Retry run to run the Zap again.");
+    throw new Error("The Delay step this run was waiting on was removed from the Flow, so the steps after it were not run. Use Retry run to run the Flow again.");
   }
   return { done: true };
 }
@@ -373,7 +374,7 @@ const worker = new Worker(
         where: { id: zapRunId, status: { in: ["QUEUED", "RUNNING"] } },
         data: { status: "CANCELLED", completedAt: new Date() },
       });
-      console.log(`[worker] run ${zapRunId} cancelled: its Zap is turned off`);
+      console.log(`[worker] run ${zapRunId} cancelled: its Flow is turned off`);
       return;
     }
     const allSteps = await prisma.step.findMany({ where: { zapId: run.zapId } });
@@ -467,16 +468,18 @@ const worker = new Worker(
       try {
         const zap = await prisma.zap.findUnique({ where: { id: run.zapId } });
         if (zap) {
-          await prisma.alert.create({
+          const alert = await prisma.alert.create({
             data: {
               userId: zap.userId,
               zapId: zap.id,
               zapRunId,
-              message: `Zap "${zap.zapName}" failed during execution: ${err.message}`,
+              message: `Flow "${zap.zapName}" failed during execution: ${err.message}`,
               errorTrace: err.stack || err.message,
             },
           });
           console.log(`[worker] Created failure Alert for user ${zap.userId}`);
+          // And an email (if the owner has email alerts on; at most one per Flow per hour).
+          await emailFlowFailed({ zap, zapRunId, reason: err.message, alertId: alert.id });
         }
       } catch (alertErr) {
         console.error(`[worker] Failed to create alert:`, alertErr.message);

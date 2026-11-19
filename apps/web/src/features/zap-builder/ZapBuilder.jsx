@@ -20,7 +20,7 @@ import { StepDrawer } from "./StepDrawer";
 const registry = { getIntegration, getIntegrationAction };
 const ROOT_WIDTH = "w-[min(36rem,calc(100vw-2rem))]";
 
-/** The Zap editor. Used by /zaps/new and /zaps/[id]/edit (an id in the URL means editing). */
+/** The Flow editor. Used by /zaps/new and /zaps/[id]/edit (an id in the URL means editing). */
 export function ZapBuilder() {
   const { isAuthenticated } = useAuthProtection();
   const params = useParams();
@@ -48,7 +48,7 @@ export function ZapBuilder() {
 
   const numbers = useMemo(() => stepNumbers(steps), [steps]);
 
-  // "Name your Zap" starts from a suggestion built from the trigger and the first step.
+  // "Name your Flow" starts from a suggestion built from the trigger and the first step.
   const { askName } = builder;
   useEffect(() => {
     if (!askName) return;
@@ -59,12 +59,12 @@ export function ZapBuilder() {
   if (!isAuthenticated || builder.isLoadingZap) {
     return (
       <div className="flex min-h-screen items-center justify-center gap-2 bg-canvas text-sm text-ink-muted">
-        <Spinner className="size-4" /> {isAuthenticated ? "Loading Zap…" : "Redirecting to login…"}
+        <Spinner className="size-4" /> {isAuthenticated ? "Loading Flow…" : "Redirecting to login…"}
       </div>
     );
   }
 
-  // Editing a Zap that doesn't exist (deleted, or a bad link) or couldn't be loaded.
+  // Editing a Flow that doesn't exist (deleted, or a bad link) or couldn't be loaded.
   if (builder.loadError) {
     const { notFound, message } = builder.loadError;
     return (
@@ -73,14 +73,14 @@ export function ZapBuilder() {
           <FileQuestion className="size-6" />
         </span>
         <div className="space-y-1">
-          <h1 className="text-lg font-semibold text-ink">{notFound ? "This Zap doesn't exist" : "Couldn't load this Zap"}</h1>
+          <h1 className="text-lg font-semibold text-ink">{notFound ? "This Flow doesn't exist" : "Couldn't load this Flow"}</h1>
           <p className="max-w-sm text-sm text-ink-muted">
             {notFound ? "It may have been deleted, or the link is wrong." : message}
           </p>
         </div>
         <div className="flex gap-2">
           {!notFound && <Button variant="secondary" onClick={() => window.location.reload()}>Try again</Button>}
-          <Button href="/dashboard">Back to Zaps</Button>
+          <Button href="/dashboard">Back to Flows</Button>
         </div>
       </div>
     );
@@ -163,7 +163,7 @@ export function ZapBuilder() {
         open={leaving}
         onClose={() => setLeaving(false)}
         title="Leave without saving?"
-        description={builder.isEditing ? "Your changes to this Zap haven't been saved." : "This Zap hasn't been published yet, so it will be lost."}
+        description={builder.isEditing ? "Your changes to this Flow haven't been saved." : "This Flow hasn't been published yet, so it will be lost."}
         footer={
           <>
             <Button variant="secondary" onClick={() => setLeaving(false)}>Keep editing</Button>
@@ -175,7 +175,7 @@ export function ZapBuilder() {
       <Modal
         open={builder.askName}
         onClose={() => builder.setAskName(false)}
-        title="Name your Zap"
+        title="Name your Flow"
         description="You'll see this name on your dashboard, in run history and in alerts."
         footer={
           <>
@@ -192,7 +192,7 @@ export function ZapBuilder() {
             if (nameInput.trim()) builder.publish({ name: nameInput });
           }}
         >
-          <Field label="Zap name" htmlFor="zap-name">
+          <Field label="Flow name" htmlFor="zap-name">
             <Input id="zap-name" autoFocus value={nameInput} maxLength={120} onChange={(e) => setNameInput(e.target.value)} onFocus={(e) => e.target.select()} />
           </Field>
         </form>

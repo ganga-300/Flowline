@@ -2,9 +2,10 @@
 
 import { cn } from "@/lib/cn";
 
-export function Switch({ checked, onChange, disabled, label, className }) {
+export function Switch({ id, checked, onChange, disabled, label, className }) {
   return (
     <button
+      id={id}
       type="button"
       role="switch"
       aria-checked={checked}

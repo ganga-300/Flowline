@@ -3,63 +3,77 @@ import { Logo } from "@/components/layout";
 import { MarketingFooter } from "@/components/marketing/MarketingFooter";
 
 export const metadata = {
-  title: "Privacy policy · Flowline",
-  description: "What Flowline stores, why, and how to remove it.",
+  title: "Privacy policy",
+  description: "What Flowline stores, why, who else is involved, and how to delete it.",
 };
 
-const UPDATED = "October 22, 2026";
-// Set NEXT_PUBLIC_CONTACT_EMAIL in Vercel to show a contact address.
-const CONTACT = process.env.NEXT_PUBLIC_CONTACT_EMAIL;
+const UPDATED = "19 November 2026";
+// Placeholder support address: change it here (and in the Terms page) before launch.
+const CONTACT = "support@flowline.app";
 
 const SECTIONS = [
   {
-    title: "What Flowline is",
+    title: "Summary",
     body: [
-      "Flowline is a personal portfolio project: a small automation tool that connects GitHub, Slack and Gmail. When something happens in one app (a new issue, message or email), it can do something in another (post a message, send an email, create an issue).",
+      "Flowline connects GitHub, Gmail and Slack (plus webhooks and built-in steps) so that something happening in one app can do something in another. To do that we have to store some of your data. We keep only what Flowline needs to run your Flows and show you what they did, we don't sell it, and you can delete it yourself at any time.",
     ],
   },
   {
     title: "What we store",
     list: [
-      "Your Flowline account: email address and a hashed password (the password itself is never stored).",
-      "Connected accounts: the access tokens GitHub, Slack and Google give Flowline when you connect them, plus the account's name or email where the app provides it, so you can tell them apart. Tokens are encrypted in the database (AES-256-GCM).",
-      "Your Zaps: their triggers, steps and settings.",
-      "Run history: for each run, the data that started it and what each step sent and received. For a Gmail trigger this includes the email's sender, recipients, subject, date and text; for Slack, the message text and author; for GitHub, the issue or commit details.",
-      "Failure alerts about your runs.",
+      "Your account: your email address and a hashed password. We never store the password itself.",
+      "Connected accounts: the access tokens GitHub, Google and Slack give Flowline when you connect them, plus the account name or email the provider returns so you can tell accounts apart. Tokens are encrypted in our database with AES-256-GCM.",
+      "Your Flows: their names, triggers, steps and settings.",
+      "Run history: for each run, the trigger data that started it and the input and output of every step. For a Gmail trigger this includes the email's sender, recipients, subject, date and text; for Slack, the message text and author; for GitHub, the issue, pull request or commit details.",
+      "Alerts about failed runs and connections that need attention.",
     ],
   },
   {
-    title: "How the data is used",
+    title: "Why we store it",
     list: [
-      "Only to run the automations you set up and to show you their history.",
-      "Gmail: read access is used to notice new emails that match your Zap's trigger; send access is used only to send the emails your Zaps are configured to send.",
-      "Slack and GitHub access is used the same way: to read new events for your triggers and to perform the actions in your steps.",
-      "No data is sold, shared with advertisers, or used to train AI models. If you add an AI step, the prompt you write (with any data you insert into it) is sent to OpenRouter to generate the response.",
+      "Your email and password let you sign in, reset your password and receive alerts about your Flows.",
+      "Access tokens let Flowline watch for your triggers and perform your steps on your behalf.",
+      "Flow definitions and run history let Flowline run your automations, retry failed runs, and show you what happened and why.",
+      "We don't sell your data, share it with advertisers, or use it to train AI models.",
     ],
   },
   {
-    title: "Google user data",
+    title: "Gmail and other Google data",
     body: [
-      "Flowline's use and transfer of information received from Google APIs to any other app will adhere to the Google API Services User Data Policy, including the Limited Use requirements. Gmail data is used only to provide the automations you configure, is not transferred to others except as needed for those automations, and is not read by people except with your permission or where required by law.",
+      "Flowline's use and transfer to any other app of information received from Google APIs will adhere to the Google API Services User Data Policy, including the Limited Use requirements.",
+      "In practice: Gmail read access is used only to notice new emails that match a Flow's trigger, and send access only to send the emails your Flows are set up to send. Gmail data is used only to provide the automations you configure. It isn't transferred to anyone else except as needed to run those automations (for example, to the app a step sends it to), to comply with the law, or as part of a merger or sale with your notice. People don't read it unless you ask us to (for example, to help with a support request), it's needed for security or to comply with the law, or it has been aggregated and anonymised for internal operations. It is never used for advertising.",
     ],
   },
   {
-    title: "Where data is kept",
-    body: [
-      "Flowline runs on Render (API and background worker), Vercel (website), Neon (database) and Render Key Value (job queue). These providers host the data on Flowline's behalf.",
-    ],
-  },
-  {
-    title: "Removing your data",
+    title: "Who else is involved",
     list: [
-      "Disconnect an app on the Connections page: its stored tokens are deleted from Flowline. You can also revoke access in the app itself (GitHub, Slack or Google account settings).",
-      "Deleting a Zap deletes its run history and alerts.",
-      "To delete your whole Flowline account and everything in it, contact us (below).",
+      "GitHub, Google and Slack: Flowline calls their APIs with the access you granted, to read the events your triggers watch for and to perform your steps.",
+      "Hosting providers: Render (API and background worker), Vercel (website), Neon (database) and Render Key Value (job queue) store and process data on our behalf.",
+      "OpenRouter: only when a Flow uses an AI step. The prompt you write, including any data you insert into it, is sent to OpenRouter to generate the response. Flows without an AI step never send anything to OpenRouter.",
+      "An email provider, to deliver password-reset emails and alert emails to your address.",
+      "Webhooks and HTTP steps send data to the URLs you enter. What those services do with it is up to them.",
     ],
   },
   {
-    title: "Changes",
-    body: ["If this policy changes, the date at the top of this page is updated."],
+    title: "Deleting your data",
+    list: [
+      "Delete your account: go to Settings and choose Delete account. This permanently deletes your account, Flows, run history, alerts and stored tokens. It can't be undone.",
+      "Delete a Flow: this deletes its run history and alerts.",
+      "Disconnect an app on the Apps page: its stored tokens are deleted from Flowline.",
+    ],
+  },
+  {
+    title: "Revoking access at each provider",
+    body: ["Deleting your Flowline account or disconnecting an app removes the tokens from Flowline. You can also cut off access from the provider's side:"],
+    list: [
+      "GitHub: Settings, then Applications, then Authorized OAuth Apps. Find Flowline and choose Revoke.",
+      "Google: myaccount.google.com/connections (Third-party apps and services). Find Flowline and remove its access.",
+      "Slack: in your workspace, open Tools and settings, then Manage apps. Find Flowline and remove it. A workspace admin may need to do this.",
+    ],
+  },
+  {
+    title: "Changes to this policy",
+    body: ["If we change this policy, we'll update the date at the top of this page. If a change significantly affects how your data is used, we'll also let you know by email."],
   },
 ];
 
@@ -93,11 +107,8 @@ export default function PrivacyPage() {
           <section>
             <h2 className="text-lg font-semibold text-ink">Contact</h2>
             <p className="mt-3 leading-relaxed text-ink-muted">
-              {CONTACT ? (
-                <>Questions or deletion requests: <a href={`mailto:${CONTACT}`} className="font-medium text-ink underline underline-offset-2">{CONTACT}</a>.</>
-              ) : (
-                "Questions or deletion requests: contact the developer through the Flowline project's GitHub repository."
-              )}
+              Questions about your data, or anything in this policy:{" "}
+              <a href={`mailto:${CONTACT}`} className="font-medium text-ink underline underline-offset-2">{CONTACT}</a>.
             </p>
           </section>
         </div>

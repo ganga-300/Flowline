@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, History, LayoutGrid, LogOut, Menu, Plug, Plus, X } from "lucide-react";
+import { Bell, History, LayoutGrid, LogOut, Menu, Plug, Plus, Settings, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, Spinner } from "@/components/ui";
 import { useAuthProtection } from "@/lib/useAuthProtection";
@@ -39,8 +39,8 @@ function useAlertCount(enabled) {
 }
 
 const NAV = [
-  { href: "/dashboard", label: "Zaps", icon: LayoutGrid },
-  { href: "/history", label: "Zap History", icon: History },
+  { href: "/dashboard", label: "Flows", icon: LayoutGrid },
+  { href: "/history", label: "Flow History", icon: History },
   { href: "/connections", label: "Apps", icon: Plug },
   { href: "/alerts", label: "Alerts", icon: Bell },
 ];
@@ -50,7 +50,7 @@ function NavLinks({ onNavigate, alertCount = 0 }) {
   return (
     <nav className="space-y-0.5">
       {NAV.map(({ href, label, icon: Icon }) => {
-        const active = pathname === href || pathname.startsWith(`${href}/`) || (href === "/dashboard" && pathname.startsWith("/zaps"));
+        const active = pathname === href || pathname.startsWith(`${href}/`) || (href === "/dashboard" && pathname.startsWith("/flows"));
         return (
           <Link
             key={href}
@@ -76,12 +76,31 @@ function NavLinks({ onNavigate, alertCount = 0 }) {
   );
 }
 
+/** The signed-in account's email (GET /auth/me), shown at the bottom of the sidebar. */
+function useAccountEmail(enabled) {
+  const [email, setEmail] = useState(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+    authFetch("/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => alive && data?.user && setEmail(data.user.email))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [enabled]);
+  return email;
+}
+
 /** Signed-in layout: sidebar on desktop, top bar + drawer on mobile. Redirects to /login if signed out. */
 export function AppShell({ children }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const { isAuthenticated } = useAuthProtection();
   const alertCount = useAlertCount(isAuthenticated);
+  const email = useAccountEmail(isAuthenticated);
+  const pathname = usePathname();
 
   const logout = () => {
     localStorage.removeItem("flowline_token");
@@ -91,11 +110,27 @@ export function AppShell({ children }) {
   const sidebar = (
     <div className="flex h-full flex-col gap-6 p-4">
       <Logo href="/dashboard" className="px-1" />
-      <Button href="/zaps/new" leftIcon={<Plus className="size-4" />} onClick={() => setOpen(false)}>
-        New Zap
+      <Button href="/flows/new" leftIcon={<Plus className="size-4" />} onClick={() => setOpen(false)}>
+        New Flow
       </Button>
       <NavLinks onNavigate={() => setOpen(false)} alertCount={alertCount} />
-      <div className="mt-auto border-t border-line pt-3">
+      <div className="mt-auto space-y-0.5 border-t border-line pt-3">
+        {email && (
+          <p className="truncate px-3 pb-1.5 text-xs text-ink-muted" title={email}>
+            Signed in as <span className="font-medium text-ink">{email}</span>
+          </p>
+        )}
+        <Link
+          href="/settings"
+          onClick={() => setOpen(false)}
+          className={cn(
+            "flex w-full items-center gap-2.5 rounded-control px-3 py-2 text-sm font-medium transition-colors",
+            pathname === "/settings" ? "bg-subtle text-ink" : "text-ink-muted hover:bg-subtle hover:text-ink"
+          )}
+        >
+          <Settings className="size-4" />
+          Settings
+        </Link>
         <button type="button" onClick={logout} className="flex w-full items-center gap-2.5 rounded-control px-3 py-2 text-sm font-medium text-ink-muted hover:bg-subtle hover:text-ink cursor-pointer">
           <LogOut className="size-4" />
           Log out
@@ -125,10 +160,11 @@ export function AppShell({ children }) {
       </header>
 
       {open && (
-        <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="absolute inset-0 bg-ink/30" onClick={() => setOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 w-64 bg-surface shadow-raised">
-            <button type="button" onClick={() => setOpen(false)} aria-label="Close menu" className="absolute right-3 top-4 rounded-md p-1.5 text-ink-faint hover:bg-subtle cursor-pointer">
+        <div className="fixed inset-0 z-40 lg:hidden" onKeyDown={(e) => e.key === "Escape" && setOpen(false)}>
+          <div className="absolute inset-0 bg-ink/30" onClick={() => setOpen(false)} aria-hidden="true" />
+          <aside role="dialog" aria-modal="true" aria-label="Menu" className="absolute inset-y-0 left-0 w-64 bg-surface shadow-raised">
+            {/* Focus starts on Close so Escape (handled above) works straight away. */}
+            <button type="button" autoFocus onClick={() => setOpen(false)} aria-label="Close menu" className="absolute right-3 top-4 rounded-md p-1.5 text-ink-faint hover:bg-subtle cursor-pointer">
               <X className="size-4" />
             </button>
             {sidebar}

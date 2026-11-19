@@ -15,7 +15,7 @@ const POLLING_TEXT = {
 };
 
 /**
- * Shown right after a new Zap is published: it's on, and what starts it. A webhook Zap shows
+ * Shown right after a new Flow is published: it's on, and what starts it. A webhook Flow shows
  * its URL and waits for the first request, then shows the fields that request carried.
  */
 export function PublishedDialog({ zap, onDone }) {
@@ -70,7 +70,7 @@ export function PublishedDialog({ zap, onDone }) {
                 <CheckCircle2 className="size-4" /> Request received. It started a run.
               </p>
               <p className="text-sm text-ink-muted">
-                These fields can now be inserted into later steps. Edit the Zap to use them.
+                These fields can now be inserted into later steps. Edit the Flow to use them.
               </p>
               <ValueTable rows={fields.slice(0, 8)} />
             </div>
@@ -88,7 +88,7 @@ export function PublishedDialog({ zap, onDone }) {
         </div>
       ) : (
         <p className="text-sm text-ink-muted">
-          The first check only notes what&apos;s already there, so older items don&apos;t start runs. Every run shows up in Zap History.
+          The first check only notes what&apos;s already there, so older items don&apos;t start runs. Every run shows up in Flow History.
         </p>
       )}
     </Modal>

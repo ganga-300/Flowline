@@ -1,5 +1,5 @@
 /**
- * What a step needs before it can run. Used by the API when a Zap is saved (so a half set-up
+ * What a step needs before it can run. Used by the API when a Flow is saved (so a half set-up
  * step can't be published) and by the worker before running a step (so one that slipped
  * through fails with a clear message instead of "succeeding" with empty values).
  * Mirrors the fields marked required in the web app's integration definitions.
@@ -38,7 +38,7 @@ function missingStepConfig(step) {
         const required = REQUIRED_FIELDS[`${config.provider}:${config.action}`];
         if (!required) return `"${config.provider}" has no action "${config.action}".`;
         // Same lookup as the handlers: fields nested under config.config (builder) or flat
-        // on config (Zaps created through the API).
+        // on config (Flows created through the API).
         const values = config.config || config;
         const missing = required.filter(([key]) => !filled(values[key])).map(([, label]) => label);
         return missing.length ? `fill in ${listOf(missing)}.` : null;

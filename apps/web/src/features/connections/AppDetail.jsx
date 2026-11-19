@@ -38,7 +38,7 @@ function EventList({ items, icon: Icon, empty }) {
   );
 }
 
-/** One connected account: name, date, the Zaps using it, Reconnect / Disconnect. */
+/** One connected account: name, date, the Flows using it, Reconnect / Disconnect. */
 function AccountRow({ app, conn, isNew, onReconnect, onDisconnect }) {
   const label = accountLabel(app.id, conn) || "Account";
   const usage = usageText(conn.usedBy);
@@ -73,11 +73,11 @@ function AccountRow({ app, conn, isNew, onReconnect, onDisconnect }) {
       )}
 
       {conn.usedBy?.length > 0 && (
-        <ul className="mt-3 flex flex-wrap gap-1.5 pl-11" aria-label={`Zaps using ${label}`}>
+        <ul className="mt-3 flex flex-wrap gap-1.5 pl-11" aria-label={`Flows using ${label}`}>
           {conn.usedBy.map((zap) => (
             <li key={zap.zapId}>
               <Link
-                href={`/zaps/${zap.zapId}/edit`}
+                href={`/flows/${zap.zapId}/edit`}
                 className="inline-flex max-w-56 items-center gap-1 rounded-md border border-line bg-canvas px-2 py-1 text-xs font-medium text-ink-muted transition-colors hover:border-line-strong hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
                 <span className="truncate">{zap.zapName}</span>
@@ -139,23 +139,23 @@ export function AppDetail({ app, accounts, titleId, newConnectionId, onClose, on
             ) : (
               <div className="rounded-control border border-dashed border-line-strong bg-canvas px-4 py-5 text-center">
                 <p className="text-sm font-medium text-ink">No {app.name} account yet</p>
-                <p className="mt-1 text-sm text-ink-muted">Connect one to use {app.name} in your Zaps.</p>
+                <p className="mt-1 text-sm text-ink-muted">Connect one to use {app.name} in your Flows.</p>
               </div>
             )}
           </Section>
         ) : (
           <Section title="Setup">
             <p className="text-sm text-ink-muted">
-              {`${app.name} works out of the box. Add it as a step when you build a Zap; there's nothing to connect.`}
+              {`${app.name} works out of the box. Add it as a step when you build a Flow; there's nothing to connect.`}
             </p>
           </Section>
         )}
 
         <Section title="Triggers" count={app.triggers.length}>
-          <EventList items={app.triggers} icon={Play} empty={`${app.name} can't start a Zap, but you can use it in any step after the trigger.`} />
+          <EventList items={app.triggers} icon={Play} empty={`${app.name} can't start a Flow, but you can use it in any step after the trigger.`} />
         </Section>
         <Section title="Actions" count={app.actions.length}>
-          <EventList items={app.actions} icon={Zap} empty={`${app.name} has no actions yet; use it to start a Zap.`} />
+          <EventList items={app.actions} icon={Zap} empty={`${app.name} has no actions yet; use it to start a Flow.`} />
         </Section>
       </div>
 
@@ -168,7 +168,7 @@ export function AppDetail({ app, accounts, titleId, newConnectionId, onClose, on
             {CONNECT_HINTS[app.id] && <p className="mt-2 text-xs text-ink-faint">{CONNECT_HINTS[app.id]}</p>}
           </>
         ) : (
-          <Button className="w-full" href="/zaps/new" leftIcon={<Plus className="size-4" />}>Create a Zap</Button>
+          <Button className="w-full" href="/flows/new" leftIcon={<Plus className="size-4" />}>Create a Flow</Button>
         )}
       </footer>
     </>

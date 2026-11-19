@@ -17,7 +17,7 @@ const RUN_STATUS = {
   FILTERED: { tone: "neutral", label: "Filtered out" },
   RUNNING: { tone: "primary", label: "Running" },
   QUEUED: { tone: "neutral", label: "Queued" },
-  // The Zap was turned off before the run started, or while it waited on a Delay.
+  // The Flow was turned off before the run started, or while it waited on a Delay.
   CANCELLED: { tone: "neutral", label: "Cancelled" },
 };
 

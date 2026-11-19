@@ -87,7 +87,7 @@ export function DataPicker({ sampleData = {}, steps = [], onSelect, onClose }) {
             ))
           ) : (
             <div className="p-3 text-slate-500 text-center italic">
-              No trigger sample data found. Click "Test Trigger" to load sample data.
+              No sample data from the trigger yet. Open the trigger&apos;s Test tab to load some.
             </div>
           )
         ) : (

@@ -11,9 +11,14 @@ export function useAuthProtection() {
     const token = localStorage.getItem("flowline_token");
     if (!token) {
       router.replace("/login");
-    } else {
-      setIsAuthenticated(true);
+      return;
     }
+    // localStorage only exists in the browser, so this is known after the first render.
+    let alive = true;
+    queueMicrotask(() => alive && setIsAuthenticated(true));
+    return () => {
+      alive = false;
+    };
   }, [router]);
 
   return { isAuthenticated };

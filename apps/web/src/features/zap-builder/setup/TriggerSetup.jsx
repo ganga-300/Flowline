@@ -13,7 +13,7 @@ import { SlackChannelSelect } from "./SlackChannelSelect";
 import { WebhookUrl } from "./WebhookUrl";
 
 const HOW_IT_WORKS = {
-  webhook: "Every POST request to this Zap's URL starts a run, with the request body as the trigger data.",
+  webhook: "Every POST request to this Flow's URL starts a run, with the request body as the trigger data.",
   gmail: "Flowline checks your inbox about every 5 minutes. Each new email that matches the search starts a run with the sender, subject and body.",
   slack: "Flowline checks the channel about every 5 minutes. Each new message starts a run with the text, the author and the channel.",
   github: "Flowline checks the repository about every 5 minutes. Each new issue or push starts a run with its details.",
@@ -22,7 +22,7 @@ const HOW_IT_WORKS = {
 /** Setup tab for the trigger: app, event, account and app-specific options. */
 export function TriggerSetup({ draft, updateDraft, setSampleData }) {
   const config = draft.config || {};
-  // A new Zap starts with no app picked, so nothing is chosen for the user.
+  // A new Flow starts with no app picked, so nothing is chosen for the user.
   const provider = config.provider ? getTriggerProviderOrDefault(config.provider) : null;
   const connectionId = config.connectionId || draft.connectionId || null;
 
@@ -65,7 +65,7 @@ export function TriggerSetup({ draft, updateDraft, setSampleData }) {
             );
           })}
         </div>
-        <p className="text-xs text-ink-muted">{provider ? provider.description : "Pick the app whose events start this Zap."}</p>
+        <p className="text-xs text-ink-muted">{provider ? provider.description : "Pick the app whose events start this Flow."}</p>
       </div>
 
       {provider && (

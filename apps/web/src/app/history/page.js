@@ -293,12 +293,12 @@ function ZapHistory() {
   const filtered = hasActiveFilters(filters);
 
   const zapOptions = useMemo(() => {
-    const options = [{ value: "", label: "All Zaps" }];
+    const options = [{ value: "", label: "All Flows" }];
     const sorted = [...(zaps || [])].sort((a, b) => (a.zapName || "").localeCompare(b.zapName || ""));
-    options.push(...sorted.map((z) => ({ value: z.id, label: z.zapName || "Untitled Zap" })));
+    options.push(...sorted.map((z) => ({ value: z.id, label: z.zapName || "Untitled Flow" })));
     if (filters.zapId && !sorted.some((z) => z.id === filters.zapId)) {
       const seen = list.runs.find((r) => (r.zapId || r.zap?.id) === filters.zapId)?.zap?.zapName;
-      options.push({ value: filters.zapId, label: seen || (zaps ? "Zap not found" : "Loading…") });
+      options.push({ value: filters.zapId, label: seen || (zaps ? "Flow not found" : "Loading…") });
     }
     return options;
   }, [zaps, filters.zapId, list.runs]);
@@ -306,8 +306,8 @@ function ZapHistory() {
   return (
     <>
       <PageHeader
-        title="Zap History"
-        description="Every run across all your Zaps, newest first. Open a run to see each step's data in and out."
+        title="Flow History"
+        description="Every run across all your Flows, newest first. Open a run to see each step's data in and out."
         actions={
           <>
             {phase === "ready" && <LiveIndicator state={live} />}
@@ -348,7 +348,7 @@ function ZapHistory() {
       </div>
 
       {loadError && (
-        <Alert tone="danger" title="Couldn't load Zap History" className="mb-5">
+        <Alert tone="danger" title="Couldn't load Flow History" className="mb-5">
           {loadError}{" "}
           <button type="button" onClick={() => loadFirstPage()} className="font-medium text-ink underline underline-offset-2 cursor-pointer">
             Try again
@@ -363,18 +363,18 @@ function ZapHistory() {
           <EmptyState
             icon={<History className="size-5" />}
             title="No runs match these filters"
-            description="Try another status, Zap or date range, or clear the filters to see every run."
+            description="Try another status, Flow or date range, or clear the filters to see every run."
             action={<Button variant="outline" onClick={clearFilters}>Clear filters</Button>}
           />
         ) : (
           <EmptyState
             icon={<History className="size-5" />}
             title="No runs yet"
-            description="Each time one of your Zaps is triggered, or you press Run on a Zap, the run shows up here with every step's data in and out. This page updates live."
+            description="Each time one of your Flows is triggered, or you press Run on a Flow, the run shows up here with every step's data in and out. This page updates live."
             action={
               <div className="flex flex-wrap justify-center gap-2">
-                <Button href="/zaps/new" leftIcon={<Plus className="size-4" />}>Create a Zap</Button>
-                <Button href="/dashboard" variant="outline" leftIcon={<Workflow className="size-4" />}>Your Zaps</Button>
+                <Button href="/flows/new" leftIcon={<Plus className="size-4" />}>Create a Flow</Button>
+                <Button href="/dashboard" variant="outline" leftIcon={<Workflow className="size-4" />}>Your Flows</Button>
               </div>
             }
           />

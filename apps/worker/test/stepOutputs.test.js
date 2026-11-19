@@ -80,7 +80,7 @@ test("a later step can use an earlier step's output via its builder ref", async 
   assert.equal(slackPost.body.text, "Created https://github.com/octo/demo/issues/12 (#12) for Login broken");
 });
 
-test("outputs stay reachable by database id too (older Zaps without ref)", () => {
+test("outputs stay reachable by database id too (older Flows without ref)", () => {
   const context = triggerContext();
   recordStepOutput(context, { id: "db_1", config: {} }, { issueUrl: "u" });
   assert.deepEqual(context.steps, { db_1: { output: { issueUrl: "u" } } });

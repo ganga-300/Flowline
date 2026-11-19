@@ -1,21 +1,25 @@
 # Flowline
 
-A workflow automation engine in the style of Zapier: when something happens in one app,
-automatically do something in another, with no code.
+A workflow automation product for GitHub, Gmail and Slack: when something happens in one
+app, a **Flow** automatically does something in another, with no code.
 
 > *New GitHub issue → summarize it with AI → post the summary to Slack.*
 > *Webhook received → filter on a field → send an email.*
 
-Flowline deliberately covers Zapier's core **Zap engine only**, with a handful of
-integrations done in depth rather than thousands done shallowly. Most of the engineering
+Flowline deliberately covers the core automation engine only (in the spirit of Zapier), with
+three integrations done in depth rather than thousands done shallowly. Most of the engineering
 went into making runs **durable and crash-safe**: no lost events, no stuck runs, and no
 duplicate requests to providers after a crash.
 
 ## Features
 
-- **Visual Zap builder**: a trigger plus an ordered list of steps, a data picker that maps
+- **Visual Flow builder**: a trigger plus steps (with Paths and Loops), a data picker that maps
   earlier step outputs into later fields (`{{steps.<id>.output...}}`), and a "test this step"
-  button that runs against live sample data.
+  button that runs against live sample data. A step only shows **Ready**, and a Flow can only
+  be published, when everything it needs is filled in; the server and the worker enforce the
+  same rule.
+- **Templates and onboarding**: start from a ready-made Flow (e.g. *new GitHub issue → Slack*)
+  and a getting-started checklist on the dashboard.
 - **Triggers**
   - Webhook: a unique URL that starts a run on each `POST`
   - Gmail: new email (polling)
@@ -31,8 +35,13 @@ duplicate requests to providers after a crash.
   - Custom HTTP request (with an SSRF guard)
 - **Run history**: every run and step is recorded with its input, output, error and
   attempt count. Failed runs can be retried in full or from the failed step.
-- **Alerts** when a run fails.
-- **Accounts and OAuth connections** for each user. Tokens are encrypted at rest with AES-256-GCM.
+- **Alerts** when a run fails, in the app and by email (at most one email per Flow per hour).
+- **Connection health**: when GitHub, Gmail or Slack revokes or expires an account's access,
+  it's flagged "needs reconnecting" on the Apps page, the dashboard and in the builder, and
+  the owner gets an email, instead of the Flow silently never running again.
+- **Accounts**: sign up, log in, forgot/reset password by email, change password, log out
+  everywhere, email-alert preference, and self-service account deletion.
+- **OAuth connections** for each user. Tokens are encrypted at rest with AES-256-GCM.
 
 ## Architecture
 
@@ -53,8 +62,8 @@ duplicate requests to providers after a crash.
 
 | Folder | What it is |
 |---|---|
-| [`apps/web`](apps/web) | Next.js 16 / React 19 frontend: marketing page, auth, dashboard, Zap builder, connections, run history, alerts |
-| [`apps/server`](apps/server) | Express 5 API: auth (JWT), Zap CRUD, OAuth flows, webhook intake, step testing. Owns the Prisma schema and migrations |
+| [`apps/web`](apps/web) | Next.js 16 / React 19 frontend: marketing page, auth, dashboard, Flow builder, templates, connections, run history, alerts, settings |
+| [`apps/server`](apps/server) | Express 5 API: auth (JWT), password reset, Flow CRUD, OAuth flows, webhook intake, step testing. Owns the Prisma schema and migrations |
 | [`apps/worker`](apps/worker) | BullMQ consumer that executes runs, plus the polling scheduler, the recovery sweep, the rate limiter and the load tests |
 | [`docs`](docs) | One write-up per milestone: design decisions, debugging notes and measured results |
 
@@ -62,18 +71,21 @@ duplicate requests to providers after a crash.
 
 The schema is in [`apps/server/prisma/schema.prisma`](apps/server/prisma/schema.prisma):
 
-- **User** owns **Zaps**, **Connections** (OAuth tokens) and **Alerts**.
-- A **Zap** has one **Trigger** and many **Steps**. A Step can point to a parent Step, which is how branches are represented.
+- **User** owns **Flows** (the `Zap` model), **Connections** (OAuth tokens) and **Alerts**.
+- A **Flow** has one **Trigger** and many **Steps**. A Step can point to a parent Step, which is how branches are represented.
 - Each event creates a **ZapRun**. Each executed step is recorded as a **StepExecution**.
 
 ### How a run executes
 
 1. An event arrives, either as a webhook or from a poll.
-2. A `ZapRun` is saved with an **idempotency key**: the trigger id plus a SHA-256 hash of the
-   payload. A redelivered event doesn't create a second run.
+2. A `ZapRun` is saved with an **idempotency key**: the trigger id plus the sender's delivery
+   id (`Idempotency-Key`, `X-GitHub-Delivery`, ...) or, without one, a hash of the payload
+   within a 5-minute window, or the polled item's id. A redelivered event doesn't create a
+   second run.
 3. A BullMQ job is queued with a fixed id (`zap-run-<runId>`), so each run gets exactly one job.
 4. The worker runs the steps in order, saves each `StepExecution`, and sets the run to
-   `SUCCESS`, `FAILED` or `FILTERED`. A failure creates an alert.
+   `SUCCESS`, `FAILED` or `FILTERED` (or `CANCELLED` if the Flow was turned off). A failure
+   creates an alert.
 
 ## Reliability
 

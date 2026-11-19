@@ -20,7 +20,7 @@ const COPY = {
   },
   signup: {
     title: "Create your account",
-    subtitle: "Connect GitHub, Slack and Gmail and build your first Zap.",
+    subtitle: "Connect GitHub, Slack and Gmail and build your first Flow.",
     submit: "Create account",
     submitting: "Creating account...",
     fallbackError: "Failed to create account. Please try again.",
@@ -89,7 +89,7 @@ export function AuthForm({ mode }) {
           />
         </Field>
 
-        <Field label="Password" htmlFor="password">
+        <Field label="Password" htmlFor="password" hint={mode === "signup" ? "At least 8 characters." : undefined}>
           <div className="relative">
             <Input
               id="password"
@@ -113,9 +113,23 @@ export function AuthForm({ mode }) {
           </div>
         </Field>
 
+        {mode === "login" && (
+          <p className="-mt-1 text-right text-sm">
+            <Link href="/forgot-password" className="font-medium text-primary hover:text-primary-hover">Forgot password?</Link>
+          </p>
+        )}
+
         <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>
           {isSubmitting ? copy.submitting : copy.submit}
         </Button>
+
+        {mode === "signup" && (
+          <p className="text-center text-xs text-ink-muted">
+            By creating an account you agree to the{" "}
+            <Link href="/terms" className="underline underline-offset-2 hover:text-ink">Terms of Service</Link> and{" "}
+            <Link href="/privacy" className="underline underline-offset-2 hover:text-ink">Privacy Policy</Link>.
+          </p>
+        )}
       </form>
 
       <p className="mt-6 text-center text-sm text-ink-muted">

@@ -79,7 +79,7 @@ export function ConnectionSelector({ providerId, providerName = "App", connectio
 
       {selectedBroken && (
         <Alert tone="warning" title={`${providerName} stopped accepting this account`}>
-          <p>Zaps that use it can&apos;t run until you reconnect it. Your setup here is kept.</p>
+          <p>Flows that use it can&apos;t run until you reconnect it. Your setup here is kept.</p>
           {selected.lastError && <p className="mt-1 break-words text-xs">Details: {selected.lastError}</p>}
           <Button variant="outline" size="sm" className="mt-2" onClick={connect} leftIcon={<RefreshCw className="size-3.5" />}>
             Reconnect {providerName}

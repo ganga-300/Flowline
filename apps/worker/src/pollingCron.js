@@ -572,8 +572,8 @@ async function pollSlack(trigger) {
   const newer = [...byTs.values()].sort((a, b) => compareSlackTs(a.ts, b.ts));
   if (newer.length === 0) return;
 
-  // Flowline's own messages (a Zap posting into the channel it watches) must not trigger,
-  // or the Zap would run forever. Without knowing who "we" are, don't process anything.
+  // Flowline's own messages (a Flow posting into the channel it watches) must not trigger,
+  // or the Flow would run forever. Without knowing who "we" are, don't process anything.
   let self;
   try {
     self = await slackSelfIdentity(accessToken);
@@ -662,7 +662,7 @@ async function runPollingCycle() {
         continue;
       }
 
-      console.warn(`[polling] Trigger ${trigger.id} (Zap ${trigger.zapId}) has unsupported provider "${provider}"; skipped. Disable or edit this Zap.`);
+      console.warn(`[polling] Trigger ${trigger.id} (Flow ${trigger.zapId}) has unsupported provider "${provider}"; skipped. Disable or edit this Flow.`);
     } catch (err) {
       console.error(`[polling] Error processing trigger ${trigger.id}:`, err.message);
     }

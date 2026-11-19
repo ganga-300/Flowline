@@ -1,4 +1,4 @@
-// Builder <-> API conversion for creating and editing Zaps (pure functions).
+// Builder <-> API conversion for creating and editing Flows (pure functions).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { toZapPayload, fromSavedZap } from "../src/lib/zapForm.js";
@@ -34,10 +34,10 @@ test("create payload: trimmed name, step order, refs and connections", () => {
   assert.deepEqual(p.steps[0].config.condition, { path: "trigger.issue.title", operator: "CONTAINS", value: "bug" });
   assert.equal(p.steps[2].connectionId, "c_sl");
   assert.deepEqual(p.steps[4].config.body, { a: 1 });
-  assert.equal(p.steps.some((s) => "id" in s), false, "new Zap: no step ids sent");
+  assert.equal(p.steps.some((s) => "id" in s), false, "new Flow: no step ids sent");
 });
 
-test("saved Zap loads back into the builder with the same ids, refs and values", () => {
+test("saved Flow loads back into the builder with the same ids, refs and values", () => {
   const loaded = fromSavedZap(simulateSave(toZapPayload(builder)));
   assert.equal(loaded.zapName, "Issue triage");
   assert.deepEqual(loaded.steps.map((s) => s.id), ["step-2", "step-3", "step-1", "step-4", "step-5"], "builder ids = saved refs, so step variables keep working");
@@ -57,7 +57,7 @@ test("load -> save round trip sends step ids (update in place) and is otherwise 
   assert.deepEqual(strip(resave), strip(firstSave));
 });
 
-test("Zaps saved before refs existed get their database id as builder id", () => {
+test("Flows saved before refs existed get their database id as builder id", () => {
   const legacy = { id: "z", zapName: "Old", trigger: { type: "WEBHOOK", config: { provider: "webhook" } },
     steps: [{ id: "cuid1", type: "ACTION", order: 0, parentStepId: null, connectionId: "c", config: { provider: "slack", action: "send_message", config: {} } }] };
   const loaded = fromSavedZap(legacy);

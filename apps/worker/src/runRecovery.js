@@ -137,7 +137,7 @@ async function failUnrecoverableRun(prisma, runId, jobId, now, log) {
         userId: run.zap.userId,
         zapId: run.zapId,
         zapRunId: runId,
-        message: `Zap "${run.zap.zapName}" failed: ${GAVE_UP_ERROR}`,
+        message: `Flow "${run.zap.zapName}" failed: ${GAVE_UP_ERROR}`,
         errorTrace: `Recovery gave up on BullMQ job ${jobId} after ${MAX_RECOVERY_ATTEMPTS} attempts.`,
       },
     });

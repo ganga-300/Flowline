@@ -8,11 +8,11 @@ import { cn } from "@/lib/cn";
 import { describeTrigger } from "./describeTrigger";
 import { lastRunSummary, reconnectHref, zapReconnectWarning } from "./zapHealth";
 
-/** One Zap on the dashboard: what it watches, on/off, and its actions. */
+/** One Flow on the dashboard: what it watches, on/off, and its actions. */
 export function ZapCard({ zap, running, onRun, onToggle, onDelete }) {
   const trigger = describeTrigger(zap.trigger);
   const enabled = zap.status === "ENABLED";
-  const name = zap.zapName || zap.name || "Untitled Zap";
+  const name = zap.zapName || zap.name || "Untitled Flow";
   const lastRun = lastRunSummary(zap);
   const warning = zapReconnectWarning(zap);
 
@@ -64,14 +64,14 @@ export function ZapCard({ zap, running, onRun, onToggle, onDelete }) {
             variant="outline"
             loading={running}
             disabled={!enabled}
-            title={enabled ? undefined : "Turn the Zap on to run it"}
+            title={enabled ? undefined : "Turn the Flow on to run it"}
             leftIcon={<Play className="size-3.5" />}
             onClick={() => onRun(zap)}
           >
             {running ? "Running" : "Run"}
           </Button>
-          <Button size="sm" variant="ghost" href={`/zaps/${zap.id}/runs`} leftIcon={<History className="size-3.5" />}>History</Button>
-          <Button size="sm" variant="ghost" href={`/zaps/${zap.id}/edit`} leftIcon={<Pencil className="size-3.5" />}>Edit</Button>
+          <Button size="sm" variant="ghost" href={`/flows/${zap.id}/runs`} leftIcon={<History className="size-3.5" />}>History</Button>
+          <Button size="sm" variant="ghost" href={`/flows/${zap.id}/edit`} leftIcon={<Pencil className="size-3.5" />}>Edit</Button>
         </div>
         <button
           type="button"

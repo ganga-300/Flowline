@@ -1,5 +1,5 @@
 /**
- * Server-side validation of a Zap's trigger (POST /zaps, PUT /zaps/:id).
+ * Server-side validation of a Flow's trigger (POST /zaps, PUT /zaps/:id).
  * Only the triggers the builder offers are accepted: Webhook (catch_hook), GitHub
  * (new_issue, new_push), Gmail (new_email) and Slack (new_message). Anything else - in
  * particular a POLLING trigger with a `url` (the removed generic HTTP poller) - is

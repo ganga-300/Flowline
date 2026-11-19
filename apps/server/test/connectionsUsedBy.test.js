@@ -1,4 +1,4 @@
-// GET /connections: each connected account lists the user's Zaps that use it (`usedBy`).
+// GET /connections: each connected account lists the user's Flows that use it (`usedBy`).
 // MOCKED: Prisma is an in-memory fake that understands the one findMany + include the
 // route makes; it also counts queries so we can prove there is no query per connection.
 const { test, beforeEach } = require("node:test");
@@ -11,7 +11,7 @@ function stub(file, exports) {
   require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
 }
 
-// ── In-memory data: alice owns conn_slack / conn_gh and three Zaps; bob owns z_bob ──
+// ── In-memory data: alice owns conn_slack / conn_gh and three Flows; bob owns z_bob ──
 let db;
 let queries;
 function reset() {
@@ -32,7 +32,7 @@ function reset() {
     trigger: [
       { id: "t_1", zapId: "z_1", connectionId: "conn_slack" },
       { id: "t_2", zapId: "z_2", connectionId: "conn_gh" },
-      { id: "t_bob", zapId: "z_bob", connectionId: "conn_slack" }, // not alice's Zap: must not show up
+      { id: "t_bob", zapId: "z_bob", connectionId: "conn_slack" }, // not alice's Flow: must not show up
     ],
     step: [
       { id: "s_1", zapId: "z_1", connectionId: "conn_slack" },
@@ -100,7 +100,7 @@ async function call(req) {
 
 beforeEach(reset);
 
-test("each connection lists the distinct Zaps that use it, via trigger or steps", async () => {
+test("each connection lists the distinct Flows that use it, via trigger or steps", async () => {
   const out = await call({ userId: "alice" });
   assert.equal(out.status, 200);
   const byId = Object.fromEntries(out.body.connections.map((c) => [c.id, c]));
@@ -111,7 +111,7 @@ test("each connection lists the distinct Zaps that use it, via trigger or steps"
   assert.deepEqual(byId.conn_gh.usedBy, [{ zapId: "z_2", zapName: "Alert on push", status: "DISABLED" }]);
 });
 
-test("Zaps owned by other users never appear in usedBy", async () => {
+test("Flows owned by other users never appear in usedBy", async () => {
   const out = await call({ userId: "alice" });
   assert.doesNotMatch(JSON.stringify(out.body), /z_bob|Bob's zap/);
 });
@@ -150,13 +150,13 @@ async function callDelete(req) {
   return out;
 }
 
-test("disconnecting turns off the Zaps that are on and use the account, and names them", async () => {
+test("disconnecting turns off the Flows that are on and use the account, and names them", async () => {
   const out = await callDelete({ userId: "alice", params: { id: "conn_slack" } });
   assert.equal(out.status, 200);
   assert.deepEqual(out.body.disabledZaps, [{ zapId: "z_1", zapName: "Standup digest" }], "z_2 was already off");
   assert.equal(db.zap.find((z) => z.id === "z_1").status, "DISABLED");
-  assert.equal(db.zap.find((z) => z.id === "z_3").status, "ENABLED", "a Zap not using it is untouched");
-  assert.equal(db.zap.find((z) => z.id === "z_bob").status, "ENABLED", "another user's Zap is never touched");
+  assert.equal(db.zap.find((z) => z.id === "z_3").status, "ENABLED", "a Flow not using it is untouched");
+  assert.equal(db.zap.find((z) => z.id === "z_bob").status, "ENABLED", "another user's Flow is never touched");
   assert.equal(db.connection.some((c) => c.id === "conn_slack"), false);
 });
 

@@ -14,7 +14,7 @@ test("operators saved by the builder (UPPERCASE) work", () => {
   assert.equal(check("CONTAINS", "trigger.issue.title", "Chrome"), false);
 });
 
-test("lowercase operators keep working (existing Zaps / branch conditions)", () => {
+test("lowercase operators keep working (existing Flows / branch conditions)", () => {
   assert.equal(check("equals", "trigger.repository.full_name", "octo/demo"), true);
   assert.equal(check("contains", "trigger.issue.title", "Login"), true);
 });

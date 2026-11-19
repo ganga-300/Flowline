@@ -48,7 +48,7 @@ router.get("/:id/options", requireAuth, async (req, res) => {
     }
 
     // On any provider failure we return an error instead of placeholder choices:
-    // fake IDs would be saved into the Zap and only fail later at runtime.
+    // fake IDs would be saved into the Flow and only fail later at runtime.
     const fail = (message) => res.status(502).json({ error: message, options: [] });
 
     if (type === "slack_channels") {
