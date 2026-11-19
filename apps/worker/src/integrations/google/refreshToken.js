@@ -1,4 +1,3 @@
-const prisma = require("../../prismaClient");
 const { fetchWithTimeout } = require("../../fetchWithTimeout");
 
 /**
@@ -7,9 +6,11 @@ const { fetchWithTimeout } = require("../../fetchWithTimeout");
  * 
  * @param {string} connectionId
  * @param {string} refreshToken
+ * @param {{ db?: object }} [options] db: the Prisma client to save with (the API passes its
+ *   own; the worker's is loaded only when needed, so the API doesn't open a second pool).
  * @returns {Promise<string>} newAccessToken
  */
-async function refreshGoogleAccessToken(connectionId, refreshToken) {
+async function refreshGoogleAccessToken(connectionId, refreshToken, { db } = {}) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
@@ -28,19 +29,25 @@ async function refreshGoogleAccessToken(connectionId, refreshToken) {
     }),
   });
 
-  const tokenData = await tokenRes.json();
+  const tokenData = await tokenRes.json().catch(() => ({}));
 
   if (!tokenRes.ok || tokenData.error) {
-    // If token is invalid or revoked, update connection error status
     const errorMsg = tokenData.error_description || tokenData.error || `HTTP ${tokenRes.status}`;
     console.error(`[google:auth] Token refresh failed for connection ${connectionId}:`, errorMsg);
+    // invalid_grant: the refresh token was revoked or expired (password change, access
+    // removed in the Google account, unverified app's 7-day limit). Only a reconnect fixes it.
+    if (tokenData.error === "invalid_grant") {
+      const err = new Error(`Google no longer accepts this Gmail connection (${errorMsg}). Reconnect Gmail on the Apps page.`);
+      err.authFailed = true;
+      throw err;
+    }
     throw new Error(`Google token refresh failed: ${errorMsg}`);
   }
 
   const newAccessToken = tokenData.access_token;
 
   // Persist updated accessToken to database
-  await prisma.connection.update({
+  await (db || require("../../prismaClient")).connection.update({
     where: { id: connectionId },
     data: { accessToken: newAccessToken },
   });

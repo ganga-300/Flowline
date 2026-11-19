@@ -22,6 +22,8 @@ const { aiPromptTemplate } = require("./aiStep");
 const { executeHttpRequest } = require("./integrations/http/request");
 const { fetchWithTimeout } = require("./fetchWithTimeout");
 const { startPollingScheduler, stopPollingScheduler, waitForPollingCycle } = require("./pollingCron");
+const { noteConnectionError, markConnectionHealthy, stepConnectionId } = require("./connectionHealth");
+const { FINISHED_RUN_STATUSES, shouldCancelRun } = require("./runGate");
 
 const slackBucket = new TokenBucket(5, 1); // 5 tokens capacity, 1 token/second refill
 const connection = new IORedis(redisUrl(), {
@@ -33,10 +35,6 @@ const zapExecutionQueue = new Queue("zap-execution", { connection });
 
 const MAX_ATTEMPTS = 3;
 const BASE_BACKOFF_MS = 500;
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 async function executeActionStep(step, context) {
   const provider = step.config?.provider;
@@ -321,12 +319,15 @@ async function executeStepList(steps, allSteps, context, zapRunId , resumeAfterS
         data: { status: "SUCCESS", output: result.output },
       });
       recordStepOutput(context, step, result.output);
+      await markConnectionHealthy(stepConnectionId(step));
     } catch (err) {
       console.error(`[worker] step ${step.id} permanently failed:`, err.message);
       await prisma.stepExecution.update({
         where: { id: stepExecution.id },
         data: { status: "FAILED", error: err.message },
       });
+      // The app rejected the account's token: flag it for the Apps page and dashboard.
+      await noteConnectionError(stepConnectionId(step), err);
       throw err; // bubble up - the whole run fails
     }
 
@@ -360,8 +361,19 @@ const worker = new Worker(
       return;
     }
     // BullMQ can hand out a job again after a crash; a finished run must never run twice.
-    if (["SUCCESS", "FAILED", "FILTERED"].includes(run.status)) {
+    if (FINISHED_RUN_STATUSES.includes(run.status)) {
       console.log(`[worker] run ${zapRunId} already ${run.status}, skipping duplicate job ${job.id}`);
+      return;
+    }
+    // Turned off (or deleted) since this run was queued, or while it waited on a Delay:
+    // the user asked for it to stop, so nothing more is sent.
+    const zap = await prisma.zap.findUnique({ where: { id: run.zapId }, select: { status: true } });
+    if (shouldCancelRun(zap)) {
+      await prisma.zapRun.updateMany({
+        where: { id: zapRunId, status: { in: ["QUEUED", "RUNNING"] } },
+        data: { status: "CANCELLED", completedAt: new Date() },
+      });
+      console.log(`[worker] run ${zapRunId} cancelled: its Zap is turned off`);
       return;
     }
     const allSteps = await prisma.step.findMany({ where: { zapId: run.zapId } });

@@ -10,9 +10,10 @@ export const HISTORY_STATUS_FILTERS = [
   { id: "FAILED", label: "Failed" },
   { id: "FILTERED", label: "Filtered" },
   { id: "ACTIVE", label: "Running/Queued" },
+  { id: "CANCELLED", label: "Cancelled" },
 ];
 
-const STATUS_QUERY = { SUCCESS: "SUCCESS", FAILED: "FAILED", FILTERED: "FILTERED", ACTIVE: "RUNNING,QUEUED" };
+const STATUS_QUERY = { SUCCESS: "SUCCESS", FAILED: "FAILED", FILTERED: "FILTERED", ACTIVE: "RUNNING,QUEUED", CANCELLED: "CANCELLED" };
 
 export const DATE_RANGES = [
   { id: "today", label: "Today" },
@@ -107,6 +108,7 @@ export function chipCounts(counts) {
     FAILED: n("FAILED"),
     FILTERED: n("FILTERED"),
     ACTIVE: n("RUNNING") + n("QUEUED"),
+    CANCELLED: n("CANCELLED"),
   };
 }
 

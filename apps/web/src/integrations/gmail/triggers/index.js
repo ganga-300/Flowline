@@ -12,8 +12,9 @@ export const gmailTriggers = [
         label: "Search Query / Filter (Optional)",
         type: "text",
         required: false,
-        placeholder: "e.g. is:unread from:boss@company.com or subject:urgent",
-        description: "Gmail search syntax to filter incoming emails (default: is:unread)",
+        placeholder: "e.g. from:boss@company.com or subject:urgent",
+        // No default: Flowline checks every few minutes, so is:unread would skip emails read before then.
+        description: "Gmail search syntax to filter incoming emails. Leave empty for every new email. Avoid is:unread: emails you open before the next check (every 5 minutes) would be skipped.",
       },
     ],
   },

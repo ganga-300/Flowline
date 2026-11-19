@@ -22,7 +22,7 @@ let nextId = 0;
 const fakePrisma = {
   connection: {
     findFirst: async ({ where, orderBy }) => {
-      const matches = rows.filter((r) => Object.entries(where).every(([k, v]) => r[k] === v));
+      const matches = rows.filter((r) => Object.entries(where).every(([k, v]) => (r[k] ?? null) === v));
       if (orderBy?.createdAt === "desc") matches.sort((a, b) => b.createdAt - a.createdAt);
       return matches[0] ? { ...matches[0] } : null;
     },
@@ -68,9 +68,11 @@ global.fetch = async (url) => {
   const u = String(url);
   const json = (body, status = 200) => ({ ok: status < 400, status, json: async () => body });
   const p = providerResponses;
-  if (u.startsWith("https://github.com/login/oauth/access_token")) return json({ access_token: "gh-fake-token" });
   if (u.startsWith("https://api.github.com/user")) return p.githubLogin ? json({ login: p.githubLogin }) : json({ message: "Bad credentials" }, 401);
   if (u.startsWith("https://slack.com/api/oauth.v2.access")) return json({ ok: true, access_token: "xoxb-fake", team: p.slackTeam });
+  if (u.startsWith("https://github.com/login/oauth/access_token")) {
+    return p.githubExchangeFails ? json({ error: "bad_verification_code", error_description: "The code passed is incorrect or expired." }) : json({ access_token: "gh-fake-token" });
+  }
   if (u.startsWith("https://oauth2.googleapis.com/token")) {
     return json({ access_token: "ya29-fake", ...(p.gmailRefreshToken ? { refresh_token: p.gmailRefreshToken } : {}) });
   }
@@ -216,4 +218,62 @@ test("slack: the placeholder workspace name never merges connections", async () 
   assert.equal(created.length, 1);
   assert.equal(rows.length, 2);
   assert.equal(rows[0].accessToken, "old");
+});
+
+// --- Connection health: reconnecting fixes a "needs reconnect" account ---
+
+for (const provider of ["github", "slack", "gmail"]) {
+  test(`${provider}: reconnecting an account marked 'needs reconnect' sets it back to OK`, async () => {
+    seed({ userId: "user_1", provider: expectedProvider[provider], accessToken: "revoked", status: "NEEDS_RECONNECT", lastError: "token_revoked", lastErrorAt: new Date() });
+    await callCallback(provider, { code: "auth-code", state: stateFor(provider) });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].status, "OK");
+    assert.equal(rows[0].lastError, null);
+    assert.equal(rows[0].lastErrorAt, null);
+  });
+}
+
+test("github: a failed token exchange goes back to the page the user came from", async () => {
+  providerResponses.githubExchangeFails = true;
+  const url = await callCallback("github", { code: "bad", state: stateFor("github", "/zaps/new") });
+  assert.match(url, /^http:\/\/frontend\.test\/zaps\/new\?error=/);
+  assert.match(decodeURIComponent(url), /incorrect or expired/);
+  assert.equal(created.length, 0);
+});
+
+// --- Slack: the workspace is identified by its team id, not its (changeable) name ---
+
+test("slack: a new connection stores the workspace's team id", async () => {
+  providerResponses.slackTeam = { id: "T123", name: "Acme" };
+  await callCallback("slack", { code: "auth-code", state: stateFor("slack") });
+  assert.equal(created[0].externalId, "T123");
+});
+
+test("slack: reconnecting a renamed workspace updates the same row (matched by team id) and its name", async () => {
+  const existing = seed({ userId: "user_1", provider: "slack:Acme", externalId: "T123", accessToken: "old" });
+  providerResponses.slackTeam = { id: "T123", name: "Acme Inc" };
+  await callCallback("slack", { code: "auth-code", state: stateFor("slack") });
+  assert.equal(created.length, 0);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].id, existing.id);
+  assert.equal(rows[0].provider, "slack:Acme Inc");
+  assert.equal(rows[0].accessToken, "xoxb-fake");
+});
+
+test("slack: a row saved before team ids were stored is matched by name and gets the id", async () => {
+  const existing = seed({ userId: "user_1", provider: "slack:Acme", accessToken: "old" });
+  providerResponses.slackTeam = { id: "T123", name: "Acme" };
+  await callCallback("slack", { code: "auth-code", state: stateFor("slack") });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].id, existing.id);
+  assert.equal(rows[0].externalId, "T123");
+});
+
+test("slack: a different workspace that happens to have the same name gets its own row", async () => {
+  seed({ userId: "user_1", provider: "slack:Acme", externalId: "T999", accessToken: "other-workspace" });
+  providerResponses.slackTeam = { id: "T123", name: "Acme" };
+  await callCallback("slack", { code: "auth-code", state: stateFor("slack") });
+  assert.equal(created.length, 1);
+  assert.equal(rows.length, 2);
+  assert.equal(rows.find((r) => r.externalId === "T999").accessToken, "other-workspace");
 });

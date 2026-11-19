@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   accountLabel, appStatus, buildAppCatalog, capabilitySummary, connectedLabel, disconnectWarning, filterApps,
   groupConnections, matchApp, statusCounts, usageText, zapNameList,
+  brokenCount, disconnectedMessage, needsReconnect, reconnectMessage,
 } from "../src/features/connections/appsDirectory.js";
 
 const slack = {
@@ -83,8 +84,36 @@ test("disconnect warning names the Zaps that will stop working", () => {
   assert.equal(zapNameList(zaps("A")), "“A”");
   assert.equal(zapNameList(zaps("A", "B")), "“A” and “B”");
   assert.equal(zapNameList(zaps("A", "B", "C", "D", "E")), "“A”, “B”, “C” and 2 more");
-  assert.equal(disconnectWarning("Slack", zaps("Digest")), "“Digest” uses this account and will stop working until you choose another Slack account.");
-  assert.match(disconnectWarning("Slack", zaps("A", "B")), /^“A” and “B” use this account/);
+  assert.equal(disconnectWarning("Slack", zaps("Digest")), "“Digest” uses this account. Disconnecting turns it off until you choose another Slack account for it.");
+  assert.match(disconnectWarning("Slack", zaps("A", "B")), /^“A” and “B” use this account\. Disconnecting turns them off/);
   assert.equal(disconnectWarning("Slack", []), "No Zaps use this Slack account right now.");
-  assert.match(disconnectWarning("Slack", undefined), /Zaps that use this Slack account will stop working/);
+  assert.match(disconnectWarning("Slack", undefined), /Zaps that use this Slack account are turned off/);
+});
+
+test("disconnect warning names only the Zaps that are on (the server turns those off)", () => {
+  const usedBy = [{ zapId: "1", zapName: "A", status: "ENABLED" }, { zapId: "2", zapName: "B", status: "DISABLED" }];
+  assert.equal(disconnectWarning("Gmail", usedBy), "“A” and “B” use this account. Disconnecting turns off “A” until you choose another Gmail account for it.");
+  assert.equal(disconnectWarning("Gmail", [usedBy[1]]), "“B” uses this account. It will need another Gmail account before running again.");
+});
+
+test("after disconnecting, the toast says which Zaps were turned off", () => {
+  assert.equal(disconnectedMessage("Slack", []), "Slack account disconnected.");
+  assert.equal(disconnectedMessage("Slack"), "Slack account disconnected.");
+  assert.equal(
+    disconnectedMessage("Slack", [{ zapId: "1", zapName: "Digest" }]),
+    "Slack account disconnected. Turned off “Digest”: choose another Slack account in it, then turn it back on."
+  );
+  assert.match(disconnectedMessage("Slack", [{ zapName: "A" }, { zapName: "B" }]), /Turned off “A” and “B”: .* in them, then turn them back on\.$/);
+});
+
+test("accounts the app stopped accepting are flagged for reconnecting", () => {
+  const ok = { id: "a", status: "OK" };
+  const broken = { id: "b", status: "NEEDS_RECONNECT", lastErrorAt: "2026-11-18T10:00:00Z" };
+  assert.equal(needsReconnect(ok), false);
+  assert.equal(needsReconnect({ id: "old" }), false, "older API without a status: OK");
+  assert.equal(needsReconnect(broken), true);
+  assert.equal(brokenCount([ok, broken, broken]), 2);
+  assert.equal(brokenCount(), 0);
+  assert.equal(reconnectMessage("Slack", broken), "Slack stopped accepting this account on Nov 18, 2026. Zaps that use it can't run until you reconnect it.");
+  assert.match(reconnectMessage("Slack", { status: "NEEDS_RECONNECT" }), /^Slack stopped accepting this account\. /);
 });

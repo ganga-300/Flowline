@@ -43,7 +43,7 @@ const prisma = {
     update: async ({ where, data }) => Object.assign(db.executions.find((e) => e.id === where.id), data),
   },
   connection: { findUnique: async () => ({ id: "c1", provider: "slack:T", accessToken: "xoxb-fake" }) },
-  zap: { findUnique: async () => ({ id: "z1", userId: "u1", zapName: "Notify" }) },
+  zap: { findUnique: async () => ({ id: "z1", userId: "u1", zapName: "Notify", status: "ENABLED" }) },
   alert: { create: async ({ data }) => { db.alerts.push(data); return data; } },
 };
 stubModule(path.join(workerSrc, "prismaClient"), prisma);
@@ -136,7 +136,7 @@ test("worker: a Slack step that times out fails the step and the run (not left R
 });
 
 test("worker: the next job runs normally after a timeout", async () => {
-  global.fetch = async (url, init) => { fetchCalls.push(String(url)); return { ok: true, json: async () => ({ ok: true, ts: "1.2" }) }; };
+  global.fetch = async (url) => { fetchCalls.push(String(url)); return { ok: true, json: async () => ({ ok: true, ts: "1.2" }) }; };
   db = {
     run: { id: "r2", zapId: "z1", status: "QUEUED", triggerPayload: {}, retryOfRunId: null, startedAt: null },
     steps: [{ id: "s1", zapId: "z1", type: "ACTION", name: "Slack", order: 0, parentStepId: null, connectionId: "c1", config: { provider: "slack", action: "send_message", channel: "C1", text: "hello" } }],

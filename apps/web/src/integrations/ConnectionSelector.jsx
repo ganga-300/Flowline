@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, RefreshCw } from "lucide-react";
 import { authFetch } from "@/lib/api";
 import { startOAuth } from "@/lib/oauth";
 import { Alert, Button, Field, Select } from "@/components/ui";
@@ -45,6 +45,8 @@ export function ConnectionSelector({ providerId, providerName = "App", connectio
   }, [providerId, connectionId]);
 
   const accounts = propConnections.length > 0 ? propConnections : fetchedConnections;
+  const selected = accounts.find((c) => c.id === connectionId);
+  const selectedBroken = selected?.status === "NEEDS_RECONNECT";
 
   const connect = () => {
     if (!startOAuth(providerId)) setNotice("Please log in again first.");
@@ -63,6 +65,7 @@ export function ConnectionSelector({ providerId, providerName = "App", connectio
             {accounts.map((conn) => (
               <option key={conn.id} value={conn.id}>
                 {conn.email || conn.name || `${providerName} account (${conn.id.slice(-6)})`}
+                {conn.status === "NEEDS_RECONNECT" ? " (reconnect needed)" : ""}
               </option>
             ))}
           </Select>
@@ -72,6 +75,16 @@ export function ConnectionSelector({ providerId, providerName = "App", connectio
           <p className="text-sm text-ink-muted">No {providerName} account connected yet.</p>
           <Button variant="outline" size="sm" onClick={connect} leftIcon={<Plus className="size-3.5" />}>Connect {providerName}</Button>
         </div>
+      )}
+
+      {selectedBroken && (
+        <Alert tone="warning" title={`${providerName} stopped accepting this account`}>
+          <p>Zaps that use it can&apos;t run until you reconnect it. Your setup here is kept.</p>
+          {selected.lastError && <p className="mt-1 break-words text-xs">Details: {selected.lastError}</p>}
+          <Button variant="outline" size="sm" className="mt-2" onClick={connect} leftIcon={<RefreshCw className="size-3.5" />}>
+            Reconnect {providerName}
+          </Button>
+        </Alert>
       )}
 
       {!isLoading && accounts.length > 0 && (

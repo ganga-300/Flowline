@@ -20,7 +20,7 @@ async function describeGithubError(res, { action, repo, issueNumber }) {
 
   switch (res.status) {
     case 401:
-      return new Error("GitHub authentication failed (401). Please reconnect GitHub in the Connections tab.");
+      return new Error("GitHub authentication failed (401). Reconnect GitHub on the Apps page.");
     case 403:
       if (res.headers?.get?.("x-ratelimit-remaining") === "0") {
         return new Error("GitHub API rate limit reached (403). Try again later.");

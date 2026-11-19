@@ -5,27 +5,19 @@ const router = express.Router();
 const prisma = require("../../prismaClient");
 const requireAuth = require("../../middleware/auth");
 const { allowedOrigins } = require("../../config");
-
-const authMiddleware = (req, res, next) => {
-  if (!req.headers.authorization && req.query.token) {
-    req.headers.authorization = `Bearer ${req.query.token}`;
-  }
-  requireAuth(req, res, next);
-};
+const { oauthStartAuth, redirectWithError, notConfiguredMessage } = require("../../lib/oauthStart");
 
 /**
  * GET /connections/github/start
  * Initiates the GitHub OAuth flow
  */
-router.get("/start", authMiddleware, (req, res) => {
+router.get("/start", oauthStartAuth, (req, res) => {
   const userId = req.userId;
   const clientId = process.env.GITHUB_CLIENT_ID;
   const redirectUri = process.env.GITHUB_REDIRECT_URI || "http://localhost:4000/connections/github/callback";
 
   if (!clientId) {
-    return res.status(500).json({
-      error: "GITHUB_CLIENT_ID is not configured on server",
-    });
+    return redirectWithError(res, req.query.returnUrl, notConfiguredMessage("GitHub", ["GITHUB_CLIENT_ID"]));
   }
 
   const stateToken = signOAuthState({ userId, provider: "github", returnUrl: req.query.returnUrl });
@@ -96,7 +88,7 @@ router.get("/callback", async (req, res) => {
     const tokenData = await tokenRes.json();
 
     if (!tokenData.access_token) {
-      return res.redirect(`${frontendAppUrl}/connections?error=${encodeURIComponent(tokenData.error_description || "GitHub token exchange failed")}`);
+      return res.redirect(`${frontendAppUrl}${returnUrl}${redirectSep}error=${encodeURIComponent(tokenData.error_description || "GitHub token exchange failed")}`);
     }
 
     // Fetch user profile from GitHub
@@ -130,7 +122,8 @@ router.get("/callback", async (req, res) => {
     const connection = existing
       ? await prisma.connection.update({
           where: { id: existing.id },
-          data: { accessToken: tokenData.access_token },
+          // A fresh token: whatever made the account "needs reconnect" is resolved.
+          data: { accessToken: tokenData.access_token, status: "OK", lastError: null, lastErrorAt: null },
         })
       : await prisma.connection.create({
           data: {

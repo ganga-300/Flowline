@@ -80,6 +80,37 @@ async function assertPublicUrl(url, lookup = dns.lookup) {
   }
 }
 
+// Node's fetch only says "fetch failed"; the reason is in err.cause.code.
+const NETWORK_REASONS = {
+  ENOTFOUND: "the host name couldn't be found (check the URL for typos)",
+  EAI_AGAIN: "the host name couldn't be looked up right now (DNS problem)",
+  ECONNREFUSED: "the server refused the connection (is it running, and is the port right?)",
+  ECONNRESET: "the server closed the connection unexpectedly",
+  ETIMEDOUT: "the connection timed out",
+  UND_ERR_CONNECT_TIMEOUT: "the connection timed out",
+  EHOSTUNREACH: "the server can't be reached from here",
+  ENETUNREACH: "the network is unreachable",
+  UND_ERR_SOCKET: "the connection was closed unexpectedly",
+  CERT_HAS_EXPIRED: "the server's SSL certificate has expired",
+  DEPTH_ZERO_SELF_SIGNED_CERT: "the server uses a self-signed SSL certificate",
+  SELF_SIGNED_CERT_IN_CHAIN: "the server uses a self-signed SSL certificate",
+  UNABLE_TO_VERIFY_LEAF_SIGNATURE: "the server's SSL certificate couldn't be verified",
+  ERR_TLS_CERT_ALTNAME_INVALID: "the server's SSL certificate doesn't match its host name",
+};
+
+/**
+ * A readable error for a request that got no response. Keeps `cause` (recovery.js retries
+ * only failures where the connection was never made, by cause.code).
+ */
+function networkError(err, method, target) {
+  const code = err?.cause?.code || err?.code;
+  let reason;
+  if (err?.name === "TimeoutError" || err?.name === "AbortError") reason = `no response within ${TIMEOUT_MS / 1000} seconds`;
+  else if (err?.cause?.message === "bad port") reason = "requests to this port aren't allowed (use a standard port such as 80, 443 or 8080)";
+  else reason = NETWORK_REASONS[code] || (code ? `network error ${code}` : err?.cause?.message || err?.message || "network error");
+  return new Error(`HTTP step: ${method} ${target} failed: ${reason}.`, { cause: err?.cause || err });
+}
+
 const allowPrivateByDefault = () =>
   process.env.HTTP_STEP_ALLOW_PRIVATE === "true" || (process.env.NODE_ENV !== "production" && process.env.HTTP_STEP_ALLOW_PRIVATE !== "false");
 
@@ -95,14 +126,21 @@ async function executeHttpRequest(config, context, { fetchImpl = fetch, allowPri
   if (!allowPrivate) await assertPublicUrl(url, lookup);
 
   const body = method === "GET" || method === "HEAD" ? null : buildBody(config?.body, context);
-  const res = await fetchImpl(url, {
-    method,
-    headers: body ? { "Content-Type": body.contentType } : {},
-    body: body ? body.text : undefined,
-    // Redirects could point at an internal address, so don't follow them when guarding.
-    redirect: allowPrivate ? "follow" : "manual",
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
+  // Origin + path only in messages: query strings often carry API keys.
+  const target = (({ origin, pathname }) => `${origin}${pathname}`)(new URL(url));
+  let res;
+  try {
+    res = await fetchImpl(url, {
+      method,
+      headers: body ? { "Content-Type": body.contentType } : {},
+      body: body ? body.text : undefined,
+      // Redirects could point at an internal address, so don't follow them when guarding.
+      redirect: allowPrivate ? "follow" : "manual",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch (err) {
+    throw networkError(err, method, target);
+  }
 
   const text = await res.text().catch(() => "");
   let parsed = text.slice(0, MAX_BODY_CHARS);
@@ -113,9 +151,7 @@ async function executeHttpRequest(config, context, { fetchImpl = fetch, allowPri
   }
   if (!res.ok && !(res.status >= 300 && res.status < 400)) {
     const snippet = typeof parsed === "string" ? parsed.slice(0, 200) : JSON.stringify(parsed).slice(0, 200);
-    // Origin + path only: query strings often carry API keys.
-    const { origin, pathname } = new URL(url);
-    throw retryableError(`HTTP step: ${method} ${origin}${pathname} returned ${res.status}${snippet ? `: ${snippet}` : ""}`, res.status);
+    throw retryableError(`HTTP step: ${method} ${target} returned ${res.status}${snippet ? `: ${snippet}` : ""}`, res.status);
   }
   return { output: { status: res.status, body: parsed } };
 }

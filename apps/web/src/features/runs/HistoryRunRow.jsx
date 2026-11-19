@@ -5,7 +5,7 @@ import { ChevronDown, RotateCcw } from "lucide-react";
 import { Badge, Button } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { Detail, RunDetails } from "./RunRow";
-import { formatDuration, formatFullTime, formatRelativeTime, runStatusMeta, stepProgress, stepStatusMeta } from "./runStatus";
+import { formatDuration, formatFullTime, formatRelativeTime, runStatusMeta, stepProgress, stepStatusMeta, canRetry } from "./runStatus";
 
 const barTone = {
   success: "bg-success",
@@ -104,16 +104,21 @@ export function HistoryRunRow({ run, now, expanded, detail, loadingDetail, detai
 
         <span className="hidden w-16 shrink-0 text-right text-sm tabular-nums text-ink-muted sm:block">{duration}</span>
 
-        <Button
-          size="sm"
-          variant="ghost"
-          className="shrink-0 px-2 sm:px-2.5"
-          leftIcon={<RotateCcw className="size-3.5" />}
-          onClick={() => onRetry(run)}
-          aria-label={`Retry this run of ${zapName}`}
-        >
-          <span className="hidden xl:inline">Retry</span>
-        </Button>
+        {canRetry(run) ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="shrink-0 px-2 sm:px-2.5"
+            leftIcon={<RotateCcw className="size-3.5" />}
+            onClick={() => onRetry(run)}
+            aria-label={`Retry this run of ${zapName}`}
+          >
+            <span className="hidden xl:inline">Retry</span>
+          </Button>
+        ) : (
+          // Same width as the button, so rows stay aligned.
+          <span aria-hidden="true" className="w-8 shrink-0 xl:w-[74px]" />
+        )}
         <button
           type="button"
           onClick={onToggle}

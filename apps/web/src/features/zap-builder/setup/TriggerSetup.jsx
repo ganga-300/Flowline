@@ -96,7 +96,7 @@ export function TriggerSetup({ draft, updateDraft, setSampleData }) {
       )}
 
       {provider?.id === "gmail" && (
-        <Field label="Only emails matching (optional)" hint="Any Gmail search, e.g. from:boss@company.com subject:invoice. Leave empty for every new email.">
+        <Field label="Only emails matching (optional)" hint="Any Gmail search, e.g. from:boss@company.com subject:invoice. Leave empty for every new email. Avoid is:unread: Flowline checks every 5 minutes, so emails you open before then would be skipped.">
           <Input value={config.query || ""} onChange={(e) => setConfig({ query: e.target.value })} placeholder="from:boss@company.com" className="font-mono text-[13px]" />
         </Field>
       )}

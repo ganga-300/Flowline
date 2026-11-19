@@ -88,6 +88,7 @@ global.fetch = async (url) => {
   if (u.includes("slack.com/api/conversations.history")) return json(fixtures.slackHistory);
   if (u.includes("slack.com/api/users.info")) return json({ ok: true, user: { id: "U111", name: "ana", profile: { display_name: "ana.l", real_name: "Ana Lopez" } } });
   if (u.includes("slack.com/api/conversations.info")) return json({ ok: true, channel: { id: "C123", name: "flowline-test" } });
+  if (u.includes("slack.com/api/auth.test")) return json({ ok: true, user_id: "UBOT", bot_id: "BBOT" });
   throw new Error(`Unexpected fetch in test: ${u}`);
 };
 

@@ -26,10 +26,16 @@ stubModule("bullmq", {
 });
 stubModule("ioredis", class {});
 
-let marker, markerWrites, runs, savedTokens;
+let marker, markerWrites, runs, savedTokens, healthWrites;
 stubModule(path.join(workerSrc, "prismaClient"), {
   trigger: { update: async ({ data }) => { marker = data.lastPollHash; markerWrites.push(marker); } },
-  connection: { update: async ({ data }) => { savedTokens.push(data.accessToken); } },
+  connection: {
+    update: async ({ where, data }) => {
+      if ("accessToken" in data) savedTokens.push(data.accessToken);
+      else healthWrites.push({ id: where.id, ...data });
+    },
+    updateMany: async ({ where, data }) => { healthWrites.push({ id: where.id, ...data }); return { count: 1 }; },
+  },
   zapRun: {
     create: async ({ data }) => {
       if (runs.some((r) => r.idempotencyKey === data.idempotencyKey)) throw Object.assign(new Error("dup"), { code: "P2002" });
@@ -42,7 +48,7 @@ stubModule(path.join(workerSrc, "prismaClient"), {
 });
 
 // ── Fake Gmail mailbox ──
-let mailbox, calls, failRequest, tokenExpired;
+let mailbox, calls, failRequest, tokenExpired, refreshRevoked;
 function resetMailbox() {
   mailbox = { historyId: 1000, history: [], messages: new Map(), expiredBefore: 0, nextId: 1 };
 }
@@ -60,6 +66,7 @@ const json = (status, body) => ({ ok: status >= 200 && status < 300, status, jso
 global.fetch = async (url, init = {}) => {
   const u = new URL(String(url));
   if (u.host === "oauth2.googleapis.com") {
+    if (refreshRevoked) return json(400, { error: "invalid_grant", error_description: "Token has been expired or revoked." });
     tokenExpired = false;
     return json(200, { access_token: "fresh-token" });
   }
@@ -102,7 +109,7 @@ global.fetch = async (url, init = {}) => {
   throw new Error(`Unexpected fetch ${u}`);
 };
 
-const { pollGmailTrigger } = require("../src/pollingCron");
+const { pollGmailTrigger, gmailSearchSince } = require("../src/pollingCron");
 const { MAX_PAGES, PAGE_SIZE } = require("../src/integrations/gmail/mailbox");
 
 const trigger = (query = "is:unread") => ({
@@ -130,6 +137,8 @@ beforeEach(() => {
   calls = [];
   failRequest = null;
   tokenExpired = false;
+  refreshRevoked = false;
+  healthWrites = [];
   warnings = [];
   realWarn ??= console.warn;
   console.warn = (msg) => warnings.push(String(msg));
@@ -349,4 +358,60 @@ test("history backlog longer than the page cap: nothing processed or skipped, ch
   assert.equal(calls.filter((c) => c.route === "/history").length, MAX_PAGES);
   assert.equal(runs.length, 0);
   assert.equal(marker, before);
+});
+
+// ── Search: no default "is:unread" ──
+
+test("gmailSearchSince: the user's search is kept; an empty search means every new email", () => {
+  assert.equal(gmailSearchSince("from:ana", 100), "(from:ana) after:100");
+  assert.equal(gmailSearchSince("", 100), "after:100");
+  assert.equal(gmailSearchSince("   ", 100), "after:100");
+  assert.equal(gmailSearchSince(undefined, 100), "after:100");
+});
+
+test("a trigger without a search runs for every new email (no hidden is:unread)", async () => {
+  await pollGmailTrigger(trigger(""));
+  calls = [];
+  inbox(2);
+  await pollGmailTrigger(trigger(""));
+  assert.equal(runs.length, 2);
+  const searches = calls.filter((c) => c.route === "/messages").map((c) => c.q);
+  assert.ok(searches.length > 0);
+  for (const q of searches) {
+    assert.doesNotMatch(q, /is:unread/);
+    assert.doesNotMatch(q, /\(\)/, "no empty group in the search");
+  }
+});
+
+// ── Connection health ──
+
+test("a revoked refresh token (invalid_grant) marks the account 'needs reconnect' and is reported", async () => {
+  await baseline();
+  const before = marker;
+  inbox(1);
+  tokenExpired = true;
+  refreshRevoked = true;
+  await assert.rejects(pollGmailTrigger(trigger()), (err) => err.authFailed === true && /Reconnect Gmail/.test(err.message));
+  assert.equal(healthWrites.length, 1);
+  assert.equal(healthWrites[0].id, "c1");
+  assert.equal(healthWrites[0].status, "NEEDS_RECONNECT");
+  assert.match(healthWrites[0].lastError, /expired or revoked/);
+  assert.equal(marker, before, "checkpoint unchanged");
+  assert.equal(runs.length, 0);
+});
+
+test("a Gmail outage (500) is waited out and doesn't mark the account", async () => {
+  await baseline();
+  inbox(1);
+  failRequest = (route) => (route === "/history" ? 500 : null);
+  await pollGmailTrigger(trigger());
+  assert.equal(healthWrites.length, 0);
+});
+
+test("a successful poll clears 'needs reconnect'", async () => {
+  await baseline();
+  const t = trigger();
+  t.connection.status = "NEEDS_RECONNECT";
+  await pollGmailTrigger(t);
+  assert.deepEqual(healthWrites, [{ id: "c1", status: "OK", lastError: null, lastErrorAt: null }]);
 });

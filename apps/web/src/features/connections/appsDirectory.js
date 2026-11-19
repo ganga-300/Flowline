@@ -171,12 +171,44 @@ export function zapNameList(usedBy = [], max = 3) {
   return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
 
-/** Body text for the disconnect confirmation. */
+/** True when the app stopped accepting this account's sign-in (revoked, expired); set by the worker. */
+export function needsReconnect(conn) {
+  return conn?.status === "NEEDS_RECONNECT";
+}
+
+/** How many of these accounts need reconnecting. */
+export function brokenCount(accounts = []) {
+  return accounts.filter(needsReconnect).length;
+}
+
+/** "Slack stopped accepting this account on Nov 18. Its Zaps can't run until you reconnect it." */
+export function reconnectMessage(appName, conn) {
+  const when = connectedOn(conn?.lastErrorAt);
+  return `${appName} stopped accepting this account${when ? ` on ${when}` : ""}. Zaps that use it can't run until you reconnect it.`;
+}
+
+const them = (n) => (n === 1 ? "it" : "them");
+
+/**
+ * Body text for the disconnect confirmation. The server turns off the Zaps that use the
+ * account and are on (they can't run without it), so say which.
+ */
 export function disconnectWarning(appName, usedBy) {
   if (Array.isArray(usedBy) && usedBy.length > 0) {
     const verb = usedBy.length === 1 ? "uses" : "use";
-    return `${zapNameList(usedBy)} ${verb} this account and will stop working until you choose another ${appName} account.`;
+    const on = usedBy.filter((z) => z.status !== "DISABLED");
+    const intro = `${zapNameList(usedBy)} ${verb} this account.`;
+    if (on.length === 0) return `${intro} ${usedBy.length === 1 ? "It" : "They"} will need another ${appName} account before running again.`;
+    const turnsOff = on.length === usedBy.length ? `turns ${them(on.length)} off` : `turns off ${zapNameList(on)}`;
+    return `${intro} Disconnecting ${turnsOff} until you choose another ${appName} account for ${them(on.length)}.`;
   }
   if (Array.isArray(usedBy)) return `No Zaps use this ${appName} account right now.`;
-  return `Zaps that use this ${appName} account will stop working until you choose another account.`;
+  return `Zaps that use this ${appName} account are turned off until you choose another account.`;
+}
+
+/** Toast after disconnecting; disabledZaps: the Zaps the server turned off. */
+export function disconnectedMessage(appName, disabledZaps = []) {
+  if (!disabledZaps.length) return `${appName} account disconnected.`;
+  const n = disabledZaps.length;
+  return `${appName} account disconnected. Turned off ${zapNameList(disabledZaps)}: choose another ${appName} account in ${them(n)}, then turn ${them(n)} back on.`;
 }

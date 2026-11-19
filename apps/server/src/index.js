@@ -17,6 +17,7 @@ const testStepRouter = require("./routes/testStep");
 const alertsRouter = require("./routes/alerts");
 const optionsRouter = require("./routes/options");
 const runsRouter = require("./routes/runs");
+const { notFoundHandler, jsonErrorHandler } = require("./middleware/errors");
 
 const app = express();
 
@@ -36,6 +37,9 @@ app.use("/alerts", alertsRouter);
 app.use("/runs", runsRouter);
 
 app.get("/health", (req, res) => res.json({ status: "ok" }));
+
+app.use(notFoundHandler);
+app.use(jsonErrorHandler);
 
 const PORT = Number(process.env.PORT) || 4000;
 app.listen(PORT, () => {

@@ -29,7 +29,7 @@ stubModule("bullmq", {
 stubModule("ioredis", class { async quit() {} async set() { return "OK"; } async get() { return null; } async del() {} });
 stubModule(path.join(workerSrc, "pollingCron"), { startPollingScheduler: () => {}, stopPollingScheduler: () => {}, waitForPollingCycle: async () => {} });
 
-let db = { runs: [], steps: [], executions: [], alerts: [] }; // empty for the startup sweep
+let db = { runs: [], steps: [], executions: [], alerts: [], connectionUpdates: [] }; // empty for the startup sweep
 const stepById = (id) => db.steps.find((s) => s.id === id);
 const prisma = {
   zapRun: {
@@ -64,8 +64,12 @@ const prisma = {
     createMany: async () => {},
     update: async ({ where, data }) => Object.assign(db.executions.find((e) => e.id === where.id), data, { updatedAt: new Date() }),
   },
-  connection: { findUnique: async () => ({ id: "c1", provider: "slack:T", accessToken: "xoxb-fake" }) },
-  zap: { findUnique: async () => ({ id: "z1", userId: "u1", zapName: "Notify later" }) },
+  zap: { findUnique: async () => ({ id: "z1", userId: "u1", zapName: "Notify later", status: db.zapStatus || "ENABLED" }) },
+  connection: {
+    findUnique: async () => ({ id: "c1", provider: "slack:T", accessToken: "xoxb-fake" }),
+    update: async ({ where, data }) => { db.connectionUpdates.push({ id: where.id, ...data }); },
+    updateMany: async ({ where, data }) => { db.connectionUpdates.push({ id: where.id, ...data }); return { count: 0 }; },
+  },
   alert: { create: async ({ data }) => { db.alerts.push(data); return data; } },
 };
 stubModule(path.join(workerSrc, "prismaClient"), prisma);
@@ -88,6 +92,7 @@ beforeEach(() => {
     ],
     executions: [],
     alerts: [],
+    connectionUpdates: [],
   };
 });
 afterEach(() => { global.fetch = realFetch; });
@@ -159,4 +164,58 @@ test("a resume job for a finished or deleted run does nothing", async () => {
   db.runs = [];
   await processJob({ id: "zap-run-r1-after-d1", data: { zapRunId: "r1", resumeAfterStepId: "d1" } });
   assert.equal(slackPosts.length, 0);
+});
+
+// ── Turned-off Zaps ──
+
+test("a queued run whose Zap was turned off is CANCELLED, not run", async () => {
+  db.zapStatus = "DISABLED";
+  await processJob({ id: "j1", data: { zapRunId: "r1" } });
+  assert.equal(run().status, "CANCELLED");
+  assert.ok(run().completedAt);
+  assert.equal(slackPosts.length, 0, "nothing sent");
+  assert.equal(db.executions.length, 0);
+  assert.equal(db.alerts.length, 0, "not a failure");
+});
+
+test("turning the Zap off while a run waits on a Delay cancels the rest of the run", async () => {
+  await processJob({ id: "j1", data: { zapRunId: "r1" } });
+  assert.equal(slackPosts.length, 1);
+  db.zapStatus = "DISABLED";
+
+  await processJob({ id: "zap-run-r1-after-d1", data: { zapRunId: "r1", resumeAfterStepId: "d1" } });
+  assert.equal(run().status, "CANCELLED");
+  assert.equal(slackPosts.length, 1, "the step after the Delay was not sent");
+
+  // A cancelled run is finished: a re-delivered job doesn't run it either.
+  db.zapStatus = "ENABLED";
+  await processJob({ id: "zap-run-r1-after-d1", data: { zapRunId: "r1", resumeAfterStepId: "d1" } });
+  assert.equal(run().status, "CANCELLED");
+  assert.equal(slackPosts.length, 1);
+});
+
+// ── Connection health ──
+
+test("a step whose Slack token is revoked marks its account as needing a reconnect", async () => {
+  global.fetch = async () => ({ ok: true, status: 200, json: async () => ({ ok: false, error: "token_revoked" }) });
+  await processJob({ id: "j1", data: { zapRunId: "r1" } });
+  assert.equal(run().status, "FAILED");
+  const broken = db.connectionUpdates.find((u) => u.status === "NEEDS_RECONNECT");
+  assert.ok(broken, "connection marked");
+  assert.equal(broken.id, "c1");
+  assert.match(broken.lastError, /token_revoked/);
+});
+
+test("a step failing for another reason (channel not found) leaves the account alone", async () => {
+  global.fetch = async () => ({ ok: true, status: 200, json: async () => ({ ok: false, error: "channel_not_found" }) });
+  await processJob({ id: "j1", data: { zapRunId: "r1" } });
+  assert.equal(run().status, "FAILED");
+  assert.equal(db.connectionUpdates.some((u) => u.status === "NEEDS_RECONNECT"), false);
+});
+
+test("a step that works clears an earlier 'needs reconnect' for its account", async () => {
+  await processJob({ id: "j1", data: { zapRunId: "r1" } });
+  const healed = db.connectionUpdates.find((u) => u.status === "OK");
+  assert.equal(healed.id, "c1");
+  assert.equal(healed.lastError, null);
 });

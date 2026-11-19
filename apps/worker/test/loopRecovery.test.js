@@ -47,7 +47,7 @@ const prisma = {
     update: async ({ where, data }) => Object.assign(db.executions.find((e) => e.id === where.id), data),
   },
   connection: { findUnique: async () => ({ id: "c1", provider: "slack:T", accessToken: "xoxb-fake" }) },
-  zap: { findUnique: async () => ({ id: "z1", userId: "u1", zapName: "Loop" }) },
+  zap: { findUnique: async () => ({ id: "z1", userId: "u1", zapName: "Loop", status: "ENABLED" }) },
   alert: { create: async ({ data }) => { db.alerts.push(data); return data; } },
 };
 stubModule(path.join(workerSrc, "prismaClient"), prisma);

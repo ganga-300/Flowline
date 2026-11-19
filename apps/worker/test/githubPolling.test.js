@@ -25,8 +25,12 @@ stubModule("bullmq", {
 });
 stubModule("ioredis", class {});
 
-let marker, markerWrites, runs;
+let marker, markerWrites, runs, connectionWrites = [];
 stubModule(path.join(workerSrc, "prismaClient"), {
+  connection: {
+    update: async ({ where, data }) => { connectionWrites.push({ id: where.id, ...data }); },
+    updateMany: async ({ where, data }) => { connectionWrites.push({ id: where.id, ...data }); return { count: 1 }; },
+  },
   trigger: { update: async ({ data }) => { marker = data.lastPollHash; markerWrites.push(marker); } },
   zapRun: {
     create: async ({ data }) => {
@@ -175,6 +179,7 @@ beforeEach(() => {
   runs = [];
   calls = [];
   failRequest = null;
+  connectionWrites = [];
   warnings = [];
   realWarn ??= console.warn;
   console.warn = (msg) => warnings.push(String(msg));
@@ -763,4 +768,43 @@ test("pushes: first push of a whole imported history into an empty repo - starts
   assert.equal(runs.length, 0);
   assert.equal(markerSha(), gh.head);
   assert.ok(warnings.some((w) => w.includes("first push")));
+});
+
+// ── Connection health ──
+
+const connectedIssues = (status = "OK") => pollGitHubTrigger({ ...trigger("new_issue"), connection: { id: "c1", accessToken: "gh-token", status } });
+
+test("health: a revoked token (401) marks the account 'needs reconnect' and is reported, not just logged", async () => {
+  await connectedIssues();
+  const before = marker;
+  openIssue();
+  failRequest = () => 401;
+  await assert.rejects(connectedIssues(), (err) => err.status === 401 && /Reconnect GitHub/.test(err.message));
+  assert.equal(connectionWrites.length, 1);
+  assert.equal(connectionWrites[0].status, "NEEDS_RECONNECT");
+  assert.equal(connectionWrites[0].id, "c1");
+  assert.equal(marker, before, "checkpoint unchanged");
+  assert.equal(runs.length, 0);
+});
+
+test("health: a rate limit or outage is waited out and doesn't mark the account", async () => {
+  await connectedIssues();
+  openIssue();
+  failRequest = () => 503;
+  await connectedIssues();
+  assert.equal(connectionWrites.length, 0);
+  assert.ok(warnings.some((w) => w.includes("will retry next poll")));
+});
+
+test("health: a successful poll clears an earlier 'needs reconnect'", async () => {
+  await connectedIssues("NEEDS_RECONNECT");
+  assert.deepEqual(connectionWrites, [{ id: "c1", status: "OK", lastError: null, lastErrorAt: null }]);
+});
+
+test("health: a failed poll never clears 'needs reconnect'", async () => {
+  await connectedIssues();
+  openIssue();
+  failRequest = () => 502;
+  await connectedIssues("NEEDS_RECONNECT");
+  assert.equal(connectionWrites.length, 0);
 });

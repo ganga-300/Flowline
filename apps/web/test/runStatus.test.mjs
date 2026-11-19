@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  describeStep, formatDuration, formatError, formatRelativeTime, isActive,
+  canRetry, describeStep, formatDuration, formatError, formatRelativeTime, isActive,
   isOutcomeUnknown, runStatusMeta, stepProgress, stepStatusMeta,
 } from "../src/features/runs/runStatus.js";
 
@@ -75,4 +75,14 @@ test("steps reused by 'retry from failed step' are labelled, and count as done",
   assert.equal(stepProgress({ stepExecutions: [{ status: "SUCCESS", reusedFromRunId: "r1" }, { status: "SUCCESS" }] }), "2 of 2 steps done");
   assert.deepEqual(retryOptions({ status: "FAILED" }), ["resume", "all"]);
   assert.deepEqual(retryOptions({ status: "SUCCESS" }), ["all"]);
+});
+
+test("a cancelled run (its Zap was turned off) reads as Cancelled, not as a failure", () => {
+  assert.deepEqual(runStatusMeta({ status: "CANCELLED" }), { tone: "neutral", label: "Cancelled" });
+});
+
+test("Retry is offered only for runs that didn't do their job", () => {
+  for (const status of ["FAILED", "FILTERED", "CANCELLED"]) assert.equal(canRetry({ status }), true, status);
+  for (const status of ["SUCCESS", "QUEUED", "RUNNING"]) assert.equal(canRetry({ status }), false, status);
+  assert.equal(canRetry(null), false);
 });
